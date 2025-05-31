@@ -1207,7 +1207,7 @@ app.post('/api/chat/message', async (req, res) => {
       // Search in Pinecone
       const searchResponse = await index.query({
         vector: searchEmbedding,
-        topK: 5,
+        topK: 3,
         includeMetadata: true,
         includeValues: false
       });
@@ -1226,11 +1226,11 @@ app.post('/api/chat/message', async (req, res) => {
         tags: match.metadata?.tags,
         category: match.metadata?.category,
         platform: match.metadata?.platform,
-        imageUrl: match.metadata?.type === 'image' ? getImageUrl(match.id, match.metadata?.fileName) : null
+        imagePath: match.metadata?.type === 'image' ? match.metadata?.fileName : null
       }));
 
       // Filter to only include the most relevant image memory (if any)
-      const imageMemories = relevantMemories.filter(memory => memory.type === 'image' && memory.imageUrl);
+      const imageMemories = relevantMemories.filter(memory => memory.type === 'image' && memory.imagePath);
       const topImageMemory = imageMemories.length > 0 ? [imageMemories[0]] : [];
       
       // Replace image memories in relevantMemories with only the top one
@@ -1331,7 +1331,10 @@ Format your response as JSON:
       content: answer,
       confidence,
       sources,
-      relevantMemories: relevantMemories.slice(0, 3), // Return top 3 for reference
+      relevantMemories: relevantMemories.map(memory => ({
+        ...memory,
+        imagePath: memory.type === 'image' ? memory.imagePath : null
+      })).slice(0, 3), // Return top 3 for reference
       timestamp: new Date().toISOString()
     };
     conversation.messages.push(aiMessage);

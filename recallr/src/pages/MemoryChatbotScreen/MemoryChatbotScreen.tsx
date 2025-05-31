@@ -13,25 +13,31 @@ import {
   NativeScrollEvent,
   Image,
   Dimensions,
+  Linking,
 } from 'react-native';
 import { chatbotApi } from '../../services/api';
-import path from 'path';
 
 // Base path for uploaded images
 const UPLOADS_BASE_PATH = Platform.select({
-  ios: '../backend/uploads/',
-  android: '/data/data/com.recallr/backend/uploads/',
-  default: '../backend/uploads/',
+  ios: 'http://localhost:3000/uploads',
+  android: 'http://10.0.2.2:3000/uploads',
+  default: 'http://localhost:3000/uploads',
 });
 
 const getImagePath = (fileName: string) => {
-  if (!fileName) return null;
-  const fullPath = path.join(UPLOADS_BASE_PATH, fileName);
-  return Platform.select({
-    ios: `file://${fullPath}`,
-    android: `file://${fullPath}`,
-    default: fullPath,
-  });
+  if (!fileName) {
+    console.log('[Image Path Debug] No fileName provided');
+    return null;
+  }
+
+  console.log(`[Image Path Debug] Processing fileName: ${fileName}`);
+  console.log(`[Image Path Debug] Using base path: ${UPLOADS_BASE_PATH}`);
+  
+  // Construct the full URL
+  const fullPath = `${UPLOADS_BASE_PATH}/${fileName}`;
+  console.log(`[Image Path Debug] Full path: ${fullPath}`);
+  
+  return fullPath;
 };
 
 type Message = {
@@ -45,7 +51,9 @@ type Message = {
     title?: string;
     createdAt: string;
     content?: string;
-    fileName?: string;
+    type?: string;
+    imagePath?: string;
+    description?: string;
   }>;
 };
 
@@ -206,18 +214,42 @@ const MemoryChatbotScreen = () => {
           </Text>
         ))}
         {relevantMemories?.map((memory, index) => {
-          const imagePath = memory.fileName ? getImagePath(memory.fileName) : null;
+          console.log(`[Memory Debug] Processing memory ${index}:`, {
+            title: memory.title,
+            type: memory.type,
+            hasImagePath: !!memory.imagePath,
+            imagePath: memory.imagePath
+          });
+          
+          const imagePath = memory.type === 'image' && memory.imagePath ? 
+            getImagePath(memory.imagePath) : null;
+
           return (
             <View key={index} style={styles.memorySource}>
               <Text style={styles.memoryTitle}>
                 {memory.title || 'Memory'} ({new Date(memory.createdAt).toLocaleDateString()})
               </Text>
               {imagePath && (
-                <Image
-                  source={{ uri: imagePath }}
-                  style={[styles.memoryImage, { width: imageWidth }]}
-                  resizeMode="contain"
-                />
+                <View>
+                  <Image
+                    source={{ uri: imagePath }}
+                    style={[styles.memoryImage, { width: imageWidth }]}
+                    resizeMode="contain"
+                    onLoadStart={() => console.log(`[Image Debug] Starting to load image: ${imagePath}`)}
+                    onLoad={() => console.log(`[Image Debug] Successfully loaded image: ${imagePath}`)}
+                    onError={(error) => console.error(`[Image Debug] Error loading image: ${imagePath}`, error.nativeEvent.error)}
+                  />
+                  {__DEV__ && (
+                    <TouchableOpacity 
+                      onPress={() => Linking.openURL(imagePath)}
+                      style={styles.debugLink}
+                    >
+                      <Text style={styles.debugText}>
+                        {imagePath}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               )}
               {memory.content && !imagePath && (
                 <Text style={styles.memoryContent} numberOfLines={2}>
@@ -455,6 +487,18 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '700',
     fontSize: 16,
+  },
+  debugLink: {
+    marginTop: 4,
+    padding: 8,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 4,
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#0066cc',
+    textDecorationLine: 'underline',
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
 });
 

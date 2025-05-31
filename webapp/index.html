@@ -605,7 +605,32 @@
             if (type === 'user') {
                 messageDiv.innerHTML = `<div style="background: #6366f1; color: white; padding: 10px; margin: 5px; border-radius: 15px; max-width: 80%; margin-left: auto; text-align: right;"><strong>${sender}:</strong> ${content}</div>`;
             } else {
-                messageDiv.innerHTML = `<div style="background: white; border: 1px solid #e5e7eb; padding: 10px; margin: 5px; border-radius: 15px; max-width: 80%;"><strong>${sender}:</strong> ${content}${confidence ? ` <span style="background: #d1fae5; padding: 2px 6px; border-radius: 10px; font-size: 10px;">${confidence.toUpperCase()}</span>` : ''}</div>`;
+                let memoryContent = '';
+                if (relevantMemories && relevantMemories.length > 0) {
+                    memoryContent = relevantMemories.map(memory => {
+                        let memoryHtml = '';
+                        if (memory.type === 'image' && memory.imagePath) {
+                            memoryHtml += `
+                                <div style="margin-top: 10px; padding: 10px; background: #f3f4f6; border-radius: 10px;">
+                                    <div style="font-size: 0.9em; color: #4b5563; margin-bottom: 5px;">
+                                        ${memory.title || 'Image Memory'}
+                                    </div>
+                                    <img src="/uploads/${memory.imagePath}" alt="Memory Image" style="max-width: 100%; border-radius: 8px; margin-top: 5px;">
+                                    ${memory.description ? `<div style="font-size: 0.8em; color: #6b7280; margin-top: 5px;">${memory.description}</div>` : ''}
+                                </div>
+                            `;
+                        }
+                        return memoryHtml;
+                    }).join('');
+                }
+
+                messageDiv.innerHTML = `
+                    <div style="background: white; border: 1px solid #e5e7eb; padding: 10px; margin: 5px; border-radius: 15px; max-width: 80%;">
+                        <strong>${sender}:</strong> ${content}
+                        ${confidence ? `<span style="background: #d1fae5; padding: 2px 6px; border-radius: 10px; font-size: 10px;">${confidence.toUpperCase()}</span>` : ''}
+                        ${memoryContent}
+                    </div>
+                `;
             }
             
             testContainer.appendChild(messageDiv);

@@ -341,7 +341,11 @@ export const chatbotApi = {
           error: null,
           confidence: response.data.message.confidence,
           sources: response.data.message.sources,
-          relevantMemories: filteredMemories,
+          relevantMemories: filteredMemories.map(memory => ({
+            ...memory,
+            type: memory.type || 'text',
+            imagePath: memory.imagePath || null
+          }))
         };
       }
 
