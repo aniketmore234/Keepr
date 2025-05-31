@@ -29,6 +29,7 @@ const embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
 let pinecone;
 let index;
 
+
 async function initializePinecone() {
   try {
     // Check if required environment variables are set
@@ -1198,6 +1199,8 @@ app.post('/api/chat/message', async (req, res) => {
     conversation.lastActivity = now;
     
     console.log(`💬 User message in ${sessionId}: "${message}"`);
+    console.log("💬 Conversations",conversation);
+  
 
     // Step 1: Use RAG to find relevant memories
     const searchEmbedding = await generateEmbedding(message);
@@ -1287,6 +1290,7 @@ Instructions:
 5. Be natural and engaging, like a helpful assistant who remembers what you've talked about
 6. Include specific details from memories (dates, times, locations, etc.)
 7. If no relevant memories are found, acknowledge that and offer to help differently
+8. Structure your answer clearly using paragraphs or bullet points if needed.
 
 Format your response as JSON:
 {

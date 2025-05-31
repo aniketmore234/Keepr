@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -14,21 +14,11 @@ import {
   Image,
   Dimensions,
   Linking,
+  ListRenderItem,
 } from 'react-native';
-import Voice, {
-  SpeechResultsEvent,
-  SpeechErrorEvent,
-  SpeechStartEvent,
-  SpeechEndEvent,
-} from '@react-native-voice/voice';
-import { SvgXml } from 'react-native-svg';
-import { chatbotApi } from '../../services/api';
-
-const micIconXml = `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M12 14C13.66 14 15 12.66 15 11V5C15 3.34 13.66 2 12 2C10.34 2 9 3.34 9 5V11C9 12.66 10.34 14 12 14Z" fill="currentColor"/>
-  <path d="M17 11C17 13.76 14.76 16 12 16C9.24 16 7 13.76 7 11H5C5 14.53 7.61 17.43 11 17.92V21H13V17.92C16.39 17.43 19 14.53 19 11H17Z" fill="currentColor"/>
-</svg>`;
+import { Text as PaperText } from 'react-native-paper';
+import { ApiService } from '../../services/ApiService';
+import VoiceInput from '../../components/VoiceInput';
 
 // Base path for uploaded images
 const UPLOADS_BASE_PATH = Platform.select({
@@ -38,22 +28,11 @@ const UPLOADS_BASE_PATH = Platform.select({
 });
 
 const getImagePath = (fileName: string) => {
-  if (!fileName) {
-    console.log('[Image Path Debug] No fileName provided');
-    return null;
-  }
-
-  console.log(`[Image Path Debug] Processing fileName: ${fileName}`);
-  console.log(`[Image Path Debug] Using base path: ${UPLOADS_BASE_PATH}`);
-  
-  // Construct the full URL
-  const fullPath = `${UPLOADS_BASE_PATH}/${fileName}`;
-  console.log(`[Image Path Debug] Full path: ${fullPath}`);
-  
-  return fullPath;
+  if (!fileName) return null;
+  return `${UPLOADS_BASE_PATH}/${fileName}`;
 };
 
-type Message = {
+interface Message {
   id: string;
   text: string;
   fromUser: boolean;
@@ -68,9 +47,8 @@ type Message = {
     imagePath: string | null;
     description?: string;
   }>;
-};
+}
 
-// initial message for the chatbot
 const initialMessages: Message[] = [
   {
     id: '1',
@@ -79,98 +57,20 @@ const initialMessages: Message[] = [
   },
 ];
 
-
 const MemoryChatbotScreen = () => {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [inputText, setInputText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [isNearBottom, setIsNearBottom] = useState(true);
-
-  const [isRecording, setIsRecording] = useState(false);
-  const hasInitializedVoice = useRef(false);
-
-  const flatListRef = useRef<FlatList>(null);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Initialize voice recognition
-  useEffect(() => {
-    if (hasInitializedVoice.current) return;
-    hasInitializedVoice.current = true;
-
-    const voiceStart = (e: SpeechStartEvent) => {
-      console.log('[Voice] Started recording');
-      setIsRecording(true);
-    };
-
-    const voiceEnd = (e: SpeechEndEvent) => {
-      console.log('[Voice] Stopped recording');
-      setIsRecording(false);
-    };
-
-    const voiceResults = (e: SpeechResultsEvent) => {
-      const spokenText = e.value?.[0] || '';
-      console.log('[Voice] Results:', spokenText);
-      if (spokenText) {
-        setInputText(spokenText);
-        // Optionally auto-send the message
-        // handleSendMessage();
-      }
-    };
-
-    const voiceError = (e: SpeechErrorEvent) => {
-      console.error('[Voice] Error:', e);
-      setIsRecording(false);
-    };
-
-    Voice.onSpeechStart = voiceStart;
-    Voice.onSpeechEnd = voiceEnd;
-    Voice.onSpeechResults = voiceResults;
-    Voice.onSpeechError = voiceError;
-
-    // Initialize Voice
-    Voice.isAvailable().then(() => {
-      console.log('[Voice] Voice recognition is available');
-    }).catch(e => {
-      console.error('[Voice] Voice recognition not available:', e);
-    });
-
-    return () => {
-      Voice.destroy().then(() => {
-        console.log('[Voice] Destroyed');
-      });
-      Voice.removeAllListeners();
-    };
-  }, []);
-
-  const startRecording = async () => {
-    try {
-      console.log('[Voice] Attempting to start recording...');
-      await Voice.start('en-US');
-      console.log('[Voice] Recording started successfully');
-    } catch (error) {
-      console.error('[Voice] Start error:', error);
-      setIsRecording(false);
-    }
-  };
-
-  const stopRecording = async () => {
-    try {
-      console.log('[Voice] Attempting to stop recording...');
-      await Voice.stop();
-      console.log('[Voice] Recording stopped successfully');
-    } catch (error) {
-      console.error('[Voice] Stop error:', error);
-      setIsRecording(false);
-    }
-  };
+  const [messages, setMessages] = React.useState<Message[]>(initialMessages);
+  const [inputText, setInputText] = React.useState('');
+  const [isTyping, setIsTyping] = React.useState(false);
+  const [isNearBottom, setIsNearBottom] = React.useState(true);
+  const flatListRef = React.useRef<FlatList | null>(null);
+  const scrollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const paddingToBottom = 20; // Tolerance for being considered "at the bottom"
+    const paddingToBottom = 20;
 
-    // Ensure contentSize.height is valid to prevent errors with empty lists or during initial layout
     if (contentSize.height <= 0) {
-      setIsNearBottom(true); // Default to true if no content or layout not fully resolved
+      setIsNearBottom(true);
       return;
     }
 
@@ -182,12 +82,10 @@ const MemoryChatbotScreen = () => {
 
   const scrollToBottom = (animated = true) => {
     if (flatListRef.current) {
-      // Clear any existing timeout
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
       }
       
-      // Only auto-scroll if we're near bottom or it's a new message
       if (isNearBottom) {
         scrollTimeoutRef.current = setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated });
@@ -196,7 +94,7 @@ const MemoryChatbotScreen = () => {
     }
   };
 
-  const handleContentSizeChange = (contentWidth: number) => {
+  const handleContentSizeChange = () => {
     scrollToBottom(true);
   };
 
@@ -204,42 +102,47 @@ const MemoryChatbotScreen = () => {
     scrollToBottom(false);
   };
 
-  // Load chat history
-  useEffect(() => {
-    const loadHistory = async () => {
-      try {
-        const history = await chatbotApi.getHistory();
-        if (history.length > 0) {
-          const formattedMessages = history.map((msg: any) => ({
-            id: msg.timestamp || Date.now().toString(),
-            text: msg.content,
-            fromUser: msg.role === 'user',
-            confidence: msg.confidence,
-            sources: msg.sources,
-            relevantMemories: msg.relevantMemories,
-          }));
-          setMessages(formattedMessages);
-        }
-      } catch (error) {
-        console.error('Error loading chat history:', error);
-      }
-    };
-    loadHistory();
-  }, []);
+  const handleVoiceResult = (text: string) => {
+    if (!text.trim()) return;
+    setInputText(text);
+    handleSendMessage();
+  };
 
-  // Scroll to bottom when new messages are added
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  const handleSendMessage = async () => {
+    if (!inputText.trim()) return;
+    
+    const userText = inputText.trim();
+    addMessage(userText, true);
+    setInputText('');
+    setIsTyping(true);
 
-  // Clean up timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
+    try {
+      const response = await ApiService.sendMessage(userText);
+      // Ensure relevantMemories has all required fields
+      const processedMemories = response.relevantMemories?.map(memory => ({
+        title: memory.title || '',
+        createdAt: memory.createdAt,
+        content: memory.content || '',
+        type: memory.type,
+        imagePath: memory.imagePath,
+        description: memory.description || ''
+      }));
+
+      addMessage(
+        response.text,
+        false,
+        false,
+        response.confidence,
+        response.sources,
+        processedMemories
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get response. Please try again.';
+      addMessage(errorMessage, false, true);
+    } finally {
+      setIsTyping(false);
+    }
+  };
 
   const addMessage = (
     text: string,
@@ -261,41 +164,6 @@ const MemoryChatbotScreen = () => {
     setMessages(prev => [...prev, newMessage]);
   };
 
-  const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
-    
-    const userText = inputText.trim();
-    addMessage(userText, true);
-    setInputText('');
-    setIsTyping(true);
-
-    try {
-      const response = await chatbotApi.sendMessage(userText);
-      const processedMemories = response.relevantMemories?.map(memory => ({
-        title: memory.title || '',
-        createdAt: memory.createdAt || new Date().toISOString(),
-        content: memory.content || '',
-        type: memory.type || 'text',
-        imagePath: memory.imagePath,
-        description: memory.description || ''
-      }));
-
-      addMessage(
-        response.text,
-        false,
-        false,
-        response.confidence,
-        response.sources,
-        processedMemories
-      );
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to get response. Please try again.';
-      addMessage(errorMessage, false, true);
-    } finally {
-      setIsTyping(false);
-    }
-  };
-
   const renderSources = (sources?: string[], relevantMemories?: Message['relevantMemories']) => {
     if (!sources?.length && !relevantMemories?.length) return null;
 
@@ -310,13 +178,6 @@ const MemoryChatbotScreen = () => {
           </Text>
         ))}
         {relevantMemories?.map((memory, index) => {
-          console.log(`[Memory Debug] Processing memory ${index}:`, {
-            title: memory.title,
-            type: memory.type,
-            hasImagePath: !!memory.imagePath,
-            imagePath: memory.imagePath
-          });
-          
           const imagePath = memory.type === 'image' && memory.imagePath ? 
             getImagePath(memory.imagePath) : null;
 
@@ -331,29 +192,11 @@ const MemoryChatbotScreen = () => {
                     source={{ uri: imagePath }}
                     style={[styles.memoryImage, { width: imageWidth }]}
                     resizeMode="contain"
-                    onLoadStart={() => console.log(`[Image Debug] Starting to load image: ${imagePath}`)}
-                    onLoad={() => console.log(`[Image Debug] Successfully loaded image: ${imagePath}`)}
-                    onError={(error) => console.error(`[Image Debug] Error loading image: ${imagePath}`, error.nativeEvent.error)}
                   />
-                  {__DEV__ && (
-                    <TouchableOpacity 
-                      onPress={() => Linking.openURL(imagePath)}
-                      style={styles.debugLink}
-                    >
-                      <Text style={styles.debugText}>
-                        {imagePath}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
               )}
-              {memory.content && !imagePath && (
-                <Text style={styles.memoryContent} numberOfLines={2}>
-                  {memory.content}
-                </Text>
-              )}
-              {memory.content && imagePath && (
-                <Text style={[styles.memoryContent, { marginTop: 4 }]} numberOfLines={2}>
+              {memory.content && (
+                <Text style={[styles.memoryContent, imagePath ? { marginTop: 4 } : {}]} numberOfLines={2}>
                   {memory.content}
                 </Text>
               )}
@@ -364,7 +207,7 @@ const MemoryChatbotScreen = () => {
     );
   };
 
-  const renderMessage = ({ item }: { item: Message }) => (
+  const renderMessage: ListRenderItem<Message> = ({ item }) => (
     <View style={styles.messageContainer}>
       <View
         style={[
@@ -373,16 +216,16 @@ const MemoryChatbotScreen = () => {
           item.error && styles.errorBubble,
         ]}
       >
-        <Text style={[
+        <PaperText style={[
           item.fromUser ? styles.userText : styles.botText,
           item.error && styles.errorText,
         ]}>
           {item.text}
-        </Text>
+        </PaperText>
         {!item.fromUser && item.confidence && (
-          <Text style={styles.confidenceText}>
+          <PaperText style={styles.confidenceText}>
             Confidence: {item.confidence}
-          </Text>
+          </PaperText>
         )}
       </View>
       {!item.fromUser && renderSources(item.sources, item.relevantMemories)}
@@ -437,17 +280,10 @@ const MemoryChatbotScreen = () => {
             returnKeyType="send"
             multiline
           />
-          <TouchableOpacity
-            style={[styles.voiceButton, isRecording && styles.voiceButtonActive]}
-            onPress={isRecording ? stopRecording : startRecording}
-          >
-            <SvgXml
-              xml={micIconXml}
-              width={24}
-              height={24}
-              color={isRecording ? '#FFFFFF' : '#333333'}
-            />
-          </TouchableOpacity>
+          <VoiceInput
+            onVoiceResult={handleVoiceResult}
+            style={styles.voiceInput}
+          />
           <TouchableOpacity 
             style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]} 
             onPress={handleSendMessage}
@@ -456,7 +292,7 @@ const MemoryChatbotScreen = () => {
             {isTyping ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
-              <Text style={styles.sendButtonText}>➤</Text>
+              <PaperText style={styles.sendButtonText}>➤</PaperText>
             )}
           </TouchableOpacity>
         </View>
@@ -560,7 +396,7 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     borderColor: '#E0E0E0',
     borderWidth: 1,
     borderRadius: 24,
@@ -572,20 +408,23 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    maxHeight: 100,
     fontSize: 16,
     paddingTop: 8,
     paddingBottom: 8,
+    maxHeight: 100,
+  },
+  voiceInput: {
+    marginLeft: 8,
   },
   sendButton: {
     backgroundColor: '#6750A4',
     padding: 8,
     borderRadius: 20,
-    marginLeft: 8,
     justifyContent: 'center',
     alignItems: 'center',
     width: 36,
     height: 36,
+    marginLeft: 8,
   },
   sendButtonDisabled: {
     backgroundColor: '#C4C4C4',
@@ -595,31 +434,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
   },
-  debugLink: {
-    marginTop: 4,
-    padding: 8,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 4,
-  },
-  debugText: {
-    fontSize: 12,
-    color: '#0066cc',
-    textDecorationLine: 'underline',
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-  },
-  voiceButton: {
-    backgroundColor: '#ddd',
-    marginLeft: 8,
-    padding: 8,
-    borderRadius: 20,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  voiceButtonActive: {
-    backgroundColor: '#4CAF50',
-  },
 });
 
-export default MemoryChatbotScreen;
+export default MemoryChatbotScreen; 

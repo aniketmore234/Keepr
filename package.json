@@ -11,10 +11,21 @@
     "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
     "start": "npm run backend"
   },
-  "keywords": ["memory", "ai", "vector-search", "react-native"],
+  "keywords": [
+    "memory",
+    "ai",
+    "vector-search",
+    "react-native"
+  ],
   "author": "Memory App Team",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@react-native-voice/voice": "^3.2.4",
+    "@types/react": "^19.1.6",
+    "@types/react-native": "^0.72.8",
+    "react-native-paper": "^5.14.5"
   }
-} 
+}

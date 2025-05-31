@@ -19,6 +19,7 @@ import {
 } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { ApiService } from '../services/ApiService';
+import VoiceSearch from '../components/VoiceSearch';
 
 export default function SearchScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,6 +53,11 @@ export default function SearchScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleVoiceResult = (text) => {
+    setSearchQuery(text);
+    performSearch();
   };
 
   const clearSearch = () => {
@@ -260,14 +266,20 @@ export default function SearchScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
-        <Searchbar
-          placeholder="Search your memories with natural language..."
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          onSubmitEditing={performSearch}
-          style={styles.searchbar}
-          inputStyle={styles.searchInput}
-        />
+        <View style={styles.searchInputContainer}>
+          <Searchbar
+            placeholder="Search your memories with natural language..."
+            onChangeText={setSearchQuery}
+            value={searchQuery}
+            onSubmitEditing={performSearch}
+            style={styles.searchbar}
+            inputStyle={styles.searchInput}
+          />
+          <VoiceSearch
+            onVoiceResult={handleVoiceResult}
+            style={styles.voiceSearch}
+          />
+        </View>
         <View style={styles.searchActions}>
           <Button
             mode="contained"
@@ -362,10 +374,15 @@ const styles = StyleSheet.create({
     padding: 16,
     elevation: 2,
   },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   searchbar: {
+    flex: 1,
     elevation: 0,
     backgroundColor: '#F0F0F0',
-    marginBottom: 12,
   },
   searchInput: {
     fontSize: 16,
@@ -595,5 +612,8 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  voiceSearch: {
+    marginLeft: 8,
   },
 }); 

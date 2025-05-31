@@ -219,20 +219,49 @@ export const memoryApi = {
   },
 };
 
+// Define the return type interface
+interface ChatResponse {
+  text: string;
+  error: null | string;
+  confidence: string;
+  sources: string[];
+  relevantMemories: Array<{
+    type: string;
+    imagePath: string | null;
+    [key: string]: any;
+  }>;
+}
+
 export const chatbotApi = {
+  // Session management
+  _currentSessionId: null as string | null,
+
   // Start a new chat session
-  getSession: async () => {
+  getSession: async (): Promise<string> => {
     try {
+      // If we already have a session ID, return it
+      if (chatbotApi._currentSessionId) {
+        return chatbotApi._currentSessionId;
+      }
+
       const response = await api.post('/api/chat/start');
       if (response.data.success) {
+        chatbotApi._currentSessionId = response.data.sessionId;
         return response.data.sessionId;
       }
       throw new Error('Failed to start chat session');
     } catch (error) {
       console.error('Error starting chat session:', error);
       // Generate a fallback session ID if server fails
-      return Date.now().toString();
+      const fallbackId = Date.now().toString();
+      chatbotApi._currentSessionId = fallbackId;
+      return fallbackId;
     }
+  },
+
+  // Reset the current session
+  resetSession: (): void => {
+    chatbotApi._currentSessionId = null;
   },
 
   // Filter and deduplicate memories
@@ -322,9 +351,9 @@ export const chatbotApi = {
   },
 
   // Send a message to the chatbot
-  sendMessage: async (message: string) => {
+  sendMessage: async (message: string): Promise<ChatResponse> => {
     try {
-      const sessionId = await chatbotApi.getSession();
+      const sessionId = await chatbotApi.getSession(); // This will now reuse existing session
       console.log('Using session ID:', sessionId);
 
       const response = await api.post('/api/chat/message', {
@@ -352,31 +381,12 @@ export const chatbotApi = {
       console.error('Unexpected API response:', response.data);
       throw new Error(response.data.message || 'Failed to get response from chatbot');
     } catch (error) {
-      console.error('Detailed Chatbot API Error:', {
-        error,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        response: axios.isAxiosError(error) ? {
-          status: error.response?.status,
-          data: error.response?.data,
-          headers: error.response?.headers,
-        } : null,
-      });
-      
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === 404) {
-          throw new Error(
-            'Chatbot endpoint not found. Please check if the server is running the latest version.\n\n' +
-            'The endpoints /api/chat/start and /api/chat/message should be available.'
-          );
-        } else if (!error.response) {
-          throw new Error(
-            'Network error. Please check:\n' +
-            '1. The server is running\n' +
-            '2. You are using the correct URL (localhost for iOS, 10.0.2.2 for Android)\n' +
-            '3. The port 3000 is not blocked'
-          );
-        }
+      console.error('Error in sendMessage:', error);
+      // If we get a 404 (session not found), try to create a new session
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        chatbotApi.resetSession(); // Clear the invalid session
+        // Retry the message once with a new session
+        return chatbotApi.sendMessage(message);
       }
       throw error;
     }
