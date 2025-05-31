@@ -1,0 +1,20 @@
+{
+  "name": "memory-app-mvp",
+  "version": "1.0.0",
+  "description": "MVP Memory App with Vector Search and AI Analysis",
+  "scripts": {
+    "backend": "cd backend && npm start",
+    "frontend": "cd frontend && npx react-native start",
+    "android": "cd frontend && npx react-native run-android",
+    "ios": "cd frontend && npx react-native run-ios",
+    "setup": "./setup.sh",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "start": "npm run backend"
+  },
+  "keywords": ["memory", "ai", "vector-search", "react-native"],
+  "author": "Memory App Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+} 
