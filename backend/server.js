@@ -113,7 +113,7 @@ function cleanGeminiResponse(responseText) {
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:8081', 'http://127.0.0.1:8081'],
+  origin: '*',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
