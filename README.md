@@ -411,4 +411,4 @@ This project is for educational and demonstration purposes. Feel free to use and
 5. **Start App**: `npm run android` or `npm run ios`
 6. **Test**: Add memories and try semantic search!
 
-**Enjoy building with AI! 🤖✨** 
+**Enjoy building with AI! 🤖✨**
