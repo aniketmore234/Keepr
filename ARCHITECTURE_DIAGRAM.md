@@ -9,11 +9,6 @@ Keepr is a multi-platform AI-powered memory management application with vector d
 graph TB
     %% Client Layer
     subgraph "CLIENT LAYER"
-        RN["React Native App (Main)
-        • HomeScreen
-        • AddMemory
-        • SearchScreen
-        • MemoryDetail"]
         WA["Web App (webapp/)
         • HTML/CSS/JS
         • Memory Forms
@@ -96,7 +91,6 @@ graph TB
     end
     
     %% Connections
-    RN --> API
     WA --> API
     RA --> API
     SDK --> API
