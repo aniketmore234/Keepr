@@ -759,12 +759,13 @@ app.post('/api/memory/image', upload.single('image'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file provided' });
     }
-
+    
+    // Extract important features from the image first
     const imagePath = req.file.path;
     const metadata = await extractImageMetadata(imagePath);
     
     // Generate comprehensive text for embedding
-    const combinedText = `${metadata.title} ${metadata.description} ${metadata.objects.join(' ')} ${metadata.activities.join(' ')} ${metadata.tags.join(' ')} ${metadata.text_content} ${metadata.scene} ${metadata.mood} ${metadata.colors.join(' ')}`;
+    const combinedText = `${metadata.title} ${metadata.description} ${metadata.objects.join(' ')} ${metadata.activities.join(' ')} ${metadata.tags.join(' ')} ${metadata.text_content} ${metadata.scene} ${metadata.mood} ${metadata.colors.join(' ')} ${req.body.title}`;
     const embedding = await generateEmbedding(combinedText);
 
     const memory = {
@@ -816,7 +817,7 @@ app.post('/api/memory/text', async (req, res) => {
     }
 
     const metadata = await analyzeTextContent(content, title);
-    const combinedText = `${metadata.title} ${content} ${metadata.keywords.join(' ')} ${metadata.topics.join(' ')} ${metadata.entities.join(' ')} ${metadata.tags.join(' ')} ${metadata.category}`;
+    const combinedText = `${metadata.title} ${content} ${metadata.keywords.join(' ')} ${metadata.topics.join(' ')} ${metadata.entities.join(' ')} ${metadata.tags.join(' ')} ${metadata.category} ${title}`;
     const embedding = await generateEmbedding(combinedText);
 
     const memory = {

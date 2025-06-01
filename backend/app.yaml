@@ -1,0 +1,15 @@
+runtime: nodejs18
+
+env_variables:
+  NODE_ENV: production
+  PORT: 8080
+
+# Configure scaling
+automatic_scaling:
+  min_instances: 0
+  max_instances: 10
+
+# Configure resources
+resources:
+  cpu: 1
+  memory_gb: 0.5 

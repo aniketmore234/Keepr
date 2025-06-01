@@ -131,8 +131,6 @@ const AddMemoryScreen = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>+ Add Memory</Text>
-
       {/* Tabs */}
       <View style={styles.tabs}>
         {['Text', 'Photo', 'Link'].map(tab => (

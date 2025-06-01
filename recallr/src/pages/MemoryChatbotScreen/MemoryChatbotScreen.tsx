@@ -14,6 +14,8 @@ import {
   Image,
   Dimensions,
   Linking,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import Voice, {
   SpeechResultsEvent,
@@ -87,81 +89,217 @@ const MemoryChatbotScreen = () => {
   const [isNearBottom, setIsNearBottom] = useState(true);
 
   const [isRecording, setIsRecording] = useState(false);
-  const hasInitializedVoice = useRef(false);
+  const [voiceInitialized, setVoiceInitialized] = useState(false);
+  const appState = useRef(AppState.currentState);
+  const isScreenActive = useRef(true);
+  const isMounted = useRef(true);
 
   const flatListRef = useRef<FlatList>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialize voice recognition
-  useEffect(() => {
-    if (hasInitializedVoice.current) return;
-    hasInitializedVoice.current = true;
-
-    const voiceStart = (e: SpeechStartEvent) => {
-      console.log('[Voice] Started recording');
+  // Voice event handlers
+  const voiceStart = (e: SpeechStartEvent) => {
+    console.log('[Voice] Started recording');
+    // Always update UI state and ensure screen is marked as active
+    isScreenActive.current = true;
+    if (isMounted.current) {
       setIsRecording(true);
-    };
+    }
+  };
 
-    const voiceEnd = (e: SpeechEndEvent) => {
-      console.log('[Voice] Stopped recording');
+  const voiceEnd = (e: SpeechEndEvent) => {
+    console.log('[Voice] Stopped recording');
+    if (isMounted.current) {
       setIsRecording(false);
-    };
+    }
+  };
 
-    const voiceResults = (e: SpeechResultsEvent) => {
-      const spokenText = e.value?.[0] || '';
-      console.log('[Voice] Results:', spokenText);
-      if (spokenText) {
-        setInputText(spokenText);
-        // Optionally auto-send the message
-        // handleSendMessage();
-      }
-    };
+  const voiceResults = (e: SpeechResultsEvent) => {
+    const spokenText = e.value?.[0] || '';
+    console.log('[Voice] Results:', spokenText);
+    console.log('[Voice] isScreenActive:', isScreenActive.current, 'isMounted:', isMounted.current);
+    
+    // Always set input text if we have spoken text and component is mounted
+    // Since voice recognition is working (search works), we should always show the text
+    if (spokenText && isMounted.current) {
+      console.log('[Voice] Setting input text to:', spokenText);
+      isScreenActive.current = true; // Ensure screen is marked as active
+      setInputText(spokenText);
+    }
+  };
 
-    const voiceError = (e: SpeechErrorEvent) => {
-      console.error('[Voice] Error:', e);
+  const voiceError = (e: SpeechErrorEvent) => {
+    console.error('[Voice] Error:', e);
+    if (isMounted.current) {
       setIsRecording(false);
-    };
+    }
+  };
 
+  // Initialize voice recognition
+  const initializeVoice = () => {
+    console.log('[Voice] Initializing voice recognition...');
+    
+    // Remove existing listeners first
+    Voice.removeAllListeners();
+    
+    // Set up event listeners
     Voice.onSpeechStart = voiceStart;
     Voice.onSpeechEnd = voiceEnd;
     Voice.onSpeechResults = voiceResults;
     Voice.onSpeechError = voiceError;
 
-    // Initialize Voice
-    Voice.isAvailable().then(() => {
-      console.log('[Voice] Voice recognition is available');
-    }).catch(e => {
-      console.error('[Voice] Voice recognition not available:', e);
-    });
+    // Check if voice is available
+    Voice.isAvailable()
+      .then(() => {
+        console.log('[Voice] Voice recognition is available');
+        if (isMounted.current) {
+          setVoiceInitialized(true);
+        }
+      })
+      .catch((error) => {
+        console.error('[Voice] Initialization error:', error);
+        if (isMounted.current) {
+          setVoiceInitialized(false);
+        }
+      });
+  };
+
+  // Clean up voice recognition
+  const cleanupVoice = () => {
+    console.log('[Voice] Cleaning up voice recognition...');
+    Voice.stop()
+      .then(() => Voice.destroy())
+      .then(() => {
+        Voice.removeAllListeners();
+        if (isMounted.current) {
+          setIsRecording(false);
+          setVoiceInitialized(false);
+        }
+      })
+      .catch((error) => {
+        console.error('[Voice] Cleanup error:', error);
+        if (isMounted.current) {
+          setIsRecording(false);
+          setVoiceInitialized(false);
+        }
+      });
+  };
+
+  // Handle app state changes
+  const handleAppStateChange = (nextAppState: AppStateStatus) => {
+    console.log('[Voice] App state changed from', appState.current, 'to', nextAppState);
+    
+    if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+      // App has come to the foreground
+      console.log('[Voice] App became active, reinitializing voice...');
+      isScreenActive.current = true;
+      setTimeout(() => {
+        if (isMounted.current) {
+          initializeVoice();
+        }
+      }, 500); // Small delay to ensure app is fully active
+    } else if (nextAppState.match(/inactive|background/)) {
+      // App is going to background
+      console.log('[Voice] App going to background, stopping recording...');
+      isScreenActive.current = false;
+      setIsRecording(false);
+      Voice.stop().catch(console.error);
+    }
+    
+    appState.current = nextAppState;
+  };
+
+  // Initialize voice recognition on component mount
+  useEffect(() => {
+    console.log('[Voice] Component mounted, initializing...');
+    isMounted.current = true;
+    isScreenActive.current = true;
+    
+    initializeVoice();
+
+    // Add app state listener
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
 
     return () => {
-      Voice.destroy().then(() => {
-        console.log('[Voice] Destroyed');
-      });
-      Voice.removeAllListeners();
+      console.log('[Voice] Component unmounting, cleaning up...');
+      isMounted.current = false;
+      subscription?.remove();
+      cleanupVoice();
     };
   }, []);
 
-  const startRecording = async () => {
-    try {
-      console.log('[Voice] Attempting to start recording...');
-      await Voice.start('en-US');
-      console.log('[Voice] Recording started successfully');
-    } catch (error) {
-      console.error('[Voice] Start error:', error);
-      setIsRecording(false);
+  // Add effect to handle screen focus - this ensures voice is ready when user interacts
+  useEffect(() => {
+    const resetVoiceOnFocus = () => {
+      console.log('[Voice] Screen focused, ensuring voice is ready...');
+      isScreenActive.current = true;
+      
+      // Force reinitialization if needed
+      if (!voiceInitialized) {
+        initializeVoice();
+      }
+    };
+
+    // Call immediately when component mounts/becomes visible
+    resetVoiceOnFocus();
+
+  }, []); // Run once on mount
+
+  const startRecording = () => {
+    console.log('[Voice] Attempting to start recording...');
+    console.log('[Voice] Current state - isScreenActive:', isScreenActive.current, 'voiceInitialized:', voiceInitialized, 'isMounted:', isMounted.current);
+    
+    // Always ensure screen is active
+    isScreenActive.current = true;
+    
+    const performStartRecording = () => {
+      // Stop any existing recording first
+      Voice.stop()
+        .then(() => {
+          // Start new recording
+          return Voice.start('en-US');
+        })
+        .then(() => {
+          console.log('[Voice] Recording started successfully');
+        })
+        .catch((error) => {
+          console.error('[Voice] Start error:', error);
+          if (isMounted.current) {
+            setIsRecording(false);
+          }
+          
+          // Try to reinitialize on error
+          console.log('[Voice] Attempting to reinitialize after error...');
+          cleanupVoice();
+          setTimeout(() => {
+            if (isMounted.current) {
+              initializeVoice();
+            }
+          }, 1000);
+        });
+    };
+
+    // Only reinitialize if voice is not initialized, otherwise try to start directly
+    if (!voiceInitialized) {
+      console.log('[Voice] Voice not initialized, initializing first...');
+      initializeVoice();
+      setTimeout(performStartRecording, 1000);
+    } else {
+      console.log('[Voice] Voice already initialized, starting recording directly...');
+      performStartRecording();
     }
   };
 
-  const stopRecording = async () => {
-    try {
-      console.log('[Voice] Attempting to stop recording...');
-      await Voice.stop();
-      console.log('[Voice] Recording stopped successfully');
-    } catch (error) {
-      console.error('[Voice] Stop error:', error);
-      setIsRecording(false);
-    }
+  const stopRecording = () => {
+    console.log('[Voice] Attempting to stop recording...');
+    Voice.stop()
+      .then(() => {
+        console.log('[Voice] Recording stopped successfully');
+      })
+      .catch((error) => {
+        console.error('[Voice] Stop error:', error);
+        setIsRecording(false);
+      });
   };
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
