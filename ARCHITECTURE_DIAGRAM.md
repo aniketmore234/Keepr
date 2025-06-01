@@ -174,7 +174,6 @@ sequenceDiagram
 ```mermaid
 graph LR
     subgraph "Frontend Clients"
-        A[React Native Main]
         B[Web App]
         C[Recallr App]
     end
@@ -199,7 +198,6 @@ graph LR
         K[In-Memory Store]
     end
     
-    A --> E
     B --> E
     C --> E
     D --> E
