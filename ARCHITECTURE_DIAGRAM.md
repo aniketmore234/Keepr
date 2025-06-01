@@ -5,124 +5,200 @@ Keepr is a multi-platform AI-powered memory management application with vector d
 
 ## Component Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                   CLIENT LAYER                                   │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐              │
-│  │   React Native   │  │    Web App       │  │   Mobile App     │              │
-│  │   App (Main)     │  │   (webapp/)      │  │   (recallr/)     │              │
-│  │                  │  │                  │  │                  │              │
-│  │ • HomeScreen     │  │ • HTML/CSS/JS    │  │ • AddMemoryScreen│              │
-│  │ • AddMemory      │  │ • Memory Forms   │  │ • Chatbot Screen │              │
-│  │ • SearchScreen   │  │ • Search UI      │  │ • Navigation     │              │
-│  │ • MemoryDetail   │  │ • Chat Interface │  │ • Header/Footer  │              │
-│  └──────────────────┘  └──────────────────┘  └──────────────────┘              │
-│           │                       │                       │                     │
-│           └───────────────────────┼───────────────────────┘                     │
-│                                   │                                             │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    │ HTTP/REST API
-                                    │
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                               SERVICE LAYER                                     │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│  ┌──────────────────┐              ┌──────────────────┐                        │
-│  │   Keepr SDK      │              │   API Service    │                        │
-│  │   (sdk/)         │              │   (src/services) │                        │
-│  │                  │              │                  │                        │
-│  │ • KeeprSDK Class │              │ • ApiService.js  │                        │
-│  │ • Memory Types   │              │ • HTTP Client    │                        │
-│  │ • Voice Support  │              │ • Error Handling │                        │
-│  │ • Validation     │              │ • Request/Response│                        │
-│  └──────────────────┘              └──────────────────┘                        │
-│           │                                   │                                 │
-│           └───────────────────────────────────┘                                 │
-│                                   │                                             │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    │ Express.js API Endpoints
-                                    │
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                               BACKEND LAYER                                     │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│  ┌──────────────────────────────────────────────────────────────────────────┐  │
-│  │                      Node.js Express Server                              │  │
-│  │                         (backend/server.js)                             │  │
-│  │                                                                          │  │
-│  │  API Endpoints:                    Core Services:                       │  │
-│  │  • POST /api/memory/image         • Image Analysis                      │  │
-│  │  • POST /api/memory/text          • Text Processing                     │  │
-│  │  • POST /api/memory/link          • URL Content Extraction              │  │
-│  │  • POST /api/search               • Vector Search & RAG                 │  │
-│  │  • GET  /api/memories             • Memory Management                   │  │
-│  │  • POST /api/chat                 • Chatbot Conversations               │  │
-│  │                                                                          │  │
-│  │  Middleware:                       Storage:                             │  │
-│  │  • CORS                           • File Upload (Multer)                │  │
-│  │  • JSON Parser                    • Conversations.json                  │  │
-│  │  • File Static Serving            • In-Memory Fallback                  │  │
-│  └──────────────────────────────────────────────────────────────────────────┘  │
-│                                       │                                         │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                        │
-                                        │ API Calls
-                                        │
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              AI & DATABASE LAYER                               │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│  ┌──────────────────┐              ┌──────────────────┐                        │
-│  │   Google AI      │              │   Pinecone       │                        │
-│  │   Services       │              │   Vector DB      │                        │
-│  │                  │              │                  │                        │
-│  │ • Gemini 1.5     │              │ • Vector Storage │                        │
-│  │   Flash Model    │              │ • Similarity     │                        │
-│  │ • embedding-001  │              │   Search         │                        │
-│  │ • Image Analysis │              │ • 768-dim        │                        │
-│  │ • Text Generation│              │   Embeddings     │                        │
-│  │ • RAG Processing │              │ • Production     │                        │
-│  │                  │              │   Scale          │                        │
-│  └──────────────────┘              └──────────────────┘                        │
-│           │                                   │                                 │
-│           └─────────────┬─────────────────────┘                                 │
-│                         │                                                       │
-│  ┌──────────────────────┴──────────────────────┐                               │
-│  │            Fallback Storage                 │                               │
-│  │         (In-Memory Arrays)                  │                               │
-│  │                                             │                               │
-│  │ • memoryStore[]                             │                               │
-│  │ • conversations{}                           │                               │
-│  │ • Simple embeddings for offline mode       │                               │
-│  └─────────────────────────────────────────────┘                               │
-└─────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    %% Client Layer
+    subgraph "CLIENT LAYER"
+        RN[React Native App<br/>Main Application<br/>• HomeScreen<br/>• AddMemory<br/>• SearchScreen<br/>• MemoryDetail]
+        WA[Web App<br/>webapp/<br/>• HTML/CSS/JS<br/>• Memory Forms<br/>• Search UI<br/>• Chat Interface]
+        RA[Mobile App<br/>recallr/<br/>• AddMemoryScreen<br/>• Chatbot Screen<br/>• Navigation<br/>• Header/Footer]
+    end
+    
+    %% Service Layer
+    subgraph "SERVICE LAYER"
+        SDK[Keepr SDK<br/>sdk/<br/>• KeeprSDK Class<br/>• Memory Types<br/>• Voice Support<br/>• Validation]
+        API[API Service<br/>src/services/<br/>• ApiService.js<br/>• HTTP Client<br/>• Error Handling<br/>• Request/Response]
+    end
+    
+    %% Backend Layer
+    subgraph "BACKEND LAYER"
+        subgraph "Express Server (backend/server.js)"
+            EP[API Endpoints<br/>• POST /api/memory/image<br/>• POST /api/memory/text<br/>• POST /api/memory/link<br/>• POST /api/search<br/>• GET /api/memories<br/>• POST /api/chat]
+            CS[Core Services<br/>• Image Analysis<br/>• Text Processing<br/>• URL Content Extraction<br/>• Vector Search & RAG<br/>• Memory Management<br/>• Chatbot Conversations]
+            MW[Middleware<br/>• CORS<br/>• JSON Parser<br/>• File Static Serving]
+            ST[Storage<br/>• File Upload (Multer)<br/>• Conversations.json<br/>• In-Memory Fallback]
+        end
+    end
+    
+    %% AI & Database Layer
+    subgraph "AI & DATABASE LAYER"
+        subgraph "Google AI Services"
+            GM[Gemini 1.5 Flash Model<br/>• Image Analysis<br/>• Text Generation<br/>• RAG Processing]
+            EMB[embedding-001<br/>• 768-dim Embeddings<br/>• Semantic Understanding]
+        end
+        
+        subgraph "Pinecone Vector DB"
+            PC[Vector Storage<br/>• Similarity Search<br/>• Production Scale<br/>• 768-dim Embeddings]
+        end
+        
+        subgraph "Fallback Storage"
+            MEM[In-Memory Arrays<br/>• memoryStore[]<br/>• conversations{}<br/>• Simple embeddings]
+        end
+    end
+    
+    %% Connections
+    RN --> API
+    WA --> API
+    RA --> API
+    SDK --> API
+    API --> EP
+    EP --> CS
+    CS --> GM
+    CS --> EMB
+    CS --> PC
+    CS --> MEM
+    EMB --> PC
+    PC -.-> MEM
+    MW --> ST
 ```
 
-## Data Flow
+## Data Flow Diagrams
 
 ### 1. Memory Creation Flow
-```
-Client App → API Service → Express Server → Google AI Analysis → Vector Embedding → Pinecone Storage
-     ↑                                                                                      ↓
-     └──────────────── Response with Memory ID ←─────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant Client as Client App
+    participant API as API Service
+    participant Server as Express Server
+    participant AI as Google AI
+    participant Vector as Vector DB
+    participant Storage as Pinecone/Memory
+    
+    Client->>API: Create Memory Request
+    API->>Server: POST /api/memory/{type}
+    Server->>AI: Analyze Content
+    AI->>Server: Metadata & Insights
+    Server->>AI: Generate Embedding
+    AI->>Server: 768-dim Vector
+    Server->>Storage: Store Vector + Metadata
+    Storage->>Server: Confirm Storage
+    Server->>API: Memory ID + Success
+    API->>Client: Creation Response
 ```
 
 ### 2. Search Flow
-```
-Search Query → Express Server → Google AI Embedding → Pinecone Vector Search → RAG Analysis → Enhanced Results
-      ↑                                                                                              ↓
-      └────────────────────── Results with AI Insights ←──────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant Client as Client App
+    participant Server as Express Server
+    participant AI as Google AI
+    participant Vector as Pinecone
+    participant RAG as RAG Engine
+    
+    Client->>Server: Search Query
+    Server->>AI: Generate Query Embedding
+    AI->>Server: Query Vector
+    Server->>Vector: Vector Similarity Search
+    Vector->>Server: Matching Results
+    Server->>RAG: Enhance with AI Insights
+    RAG->>AI: Generate Insights
+    AI->>RAG: Enhanced Analysis
+    RAG->>Server: Enriched Results
+    Server->>Client: Search Results + Insights
 ```
 
 ### 3. Chat Flow
+```mermaid
+sequenceDiagram
+    participant Client as Client App
+    participant Server as Express Server
+    participant Context as Conversation Context
+    participant AI as Google AI
+    participant Storage as File Storage
+    
+    Client->>Server: Chat Message
+    Server->>Context: Load Conversation History
+    Context->>Server: Previous Messages
+    Server->>AI: Message + Context
+    AI->>Server: AI Response
+    Server->>Context: Update Conversation
+    Context->>Storage: Save to conversations.json
+    Server->>Client: AI Response
 ```
-User Message → Chatbot Endpoint → Conversation Context → Google AI → Response Generation → Context Update
-      ↑                                                                                           ↓
-      └─────────────────────── AI Response ←─────────────────────────────────────────────────────┘
+
+## Component Interaction Map
+
+```mermaid
+graph LR
+    subgraph "Frontend Clients"
+        A[React Native Main]
+        B[Web App]
+        C[Recallr App]
+    end
+    
+    subgraph "Service Layer"
+        D[Keepr SDK]
+        E[API Service]
+    end
+    
+    subgraph "Backend Core"
+        F[Express Server]
+    end
+    
+    subgraph "AI Services"
+        G[Google Gemini]
+        H[Embeddings API]
+    end
+    
+    subgraph "Data Storage"
+        I[Pinecone Vector DB]
+        J[File System]
+        K[In-Memory Store]
+    end
+    
+    A --> E
+    B --> E
+    C --> E
+    D --> E
+    E --> F
+    F --> G
+    F --> H
+    F --> I
+    F --> J
+    F --> K
+    H --> I
+    I -.-> K
+```
+
+## Technology Stack Overview
+
+```mermaid
+mindmap
+  root((Keepr Project))
+    Frontend
+      React Native 0.73.0
+      React Navigation 6
+      React Native Paper
+      React Native Image Picker
+      TypeScript
+    Backend
+      Node.js
+      Express.js
+      Multer (File Upload)
+      CORS Middleware
+    AI/ML
+      Google Gemini 1.5 Flash
+      Google embedding-001
+      Vector Embeddings (768-dim)
+      RAG (Retrieval Augmented Generation)
+    Database
+      Pinecone Vector Database
+      File System Storage
+      In-Memory Fallback
+    DevOps
+      Google Cloud Platform
+      Docker
+      Cloud Build
 ```
 
 ## Key Components Breakdown
