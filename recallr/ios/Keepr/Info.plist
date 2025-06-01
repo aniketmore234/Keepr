@@ -48,5 +48,39 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<!-- URL Schemes for deep linking -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.keepr.share</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>keepr</string>
+				<string>https</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Document types for sharing -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Text</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.text</string>
+				<string>public.url</string>
+			</array>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+		</dict>
+	</array>
+	<!-- Universal Links -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:instagram.com</string>
+		<string>applinks:www.instagram.com</string>
+	</array>
 </dict>
 </plist> 

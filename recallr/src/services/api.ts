@@ -1,16 +1,21 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 // For iOS simulator, use localhost
 // For Android emulator, use 10.0.2.2
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = Platform.select({
+  ios: 'http://localhost:3000',
+  android: 'http://10.0.2.2:3000',
+  default: 'http://localhost:3000',
+});
 
 const api = axios.create({
   baseURL: BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 second timeout
+  timeout: 30000, // Increased timeout to 30 seconds
 });
 
 // Add request interceptor for debugging
@@ -21,6 +26,7 @@ api.interceptors.request.use(
       method: config.method,
       headers: config.headers,
       data: config.data,
+      baseURL: config.baseURL,
     });
     return config;
   },
@@ -62,6 +68,53 @@ export interface Memory {
   imageUrl?: string;
   createdAt?: string;
 }
+
+// Test network connectivity to the backend
+export const testConnection = async () => {
+  try {
+    console.log('🔍 Testing connection to backend server...');
+    console.log('🌐 Target URL:', BASE_URL);
+    
+    const response = await api.get('/api/memories', {
+      timeout: 5000, // Short timeout for connection test
+    });
+    
+    console.log('✅ Connection test successful:', response.status);
+    return {
+      success: true,
+      status: response.status,
+      baseUrl: BASE_URL,
+      message: 'Backend server is accessible'
+    };
+  } catch (error) {
+    console.error('❌ Connection test failed:', error);
+    
+    if (axios.isAxiosError(error)) {
+      if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+        return {
+          success: false,
+          error: 'Cannot connect to server. Please ensure the backend server is running.',
+          baseUrl: BASE_URL,
+          suggestion: 'Check if the server is running on ' + BASE_URL
+        };
+      } else if (error.code === 'TIMEOUT') {
+        return {
+          success: false,
+          error: 'Connection timeout. Server is taking too long to respond.',
+          baseUrl: BASE_URL,
+          suggestion: 'Check your network connection and server status'
+        };
+      }
+    }
+    
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown connection error',
+      baseUrl: BASE_URL,
+      suggestion: 'Please check your network connection and ensure the backend server is running'
+    };
+  }
+};
 
 export const memoryApi = {
   // Create a new memory
@@ -129,8 +182,39 @@ export const memoryApi = {
         }
         
         throw new Error(response.data.message || 'Failed to upload photo');
+      } else if (memory.type === 'link') {
+        // For link type, use the Instagram-processing endpoint
+        const data = {
+          url: memory.content || '',
+          title: memory.title || '',
+          description: '', // Could add this field to the Memory interface if needed
+        };
+
+        console.log('Sending link memory to Instagram processing endpoint:', data);
+
+        const response = await api.post('/api/memory/link', data, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        console.log('Link memory response:', response.data);
+
+        if (response.data.success) {
+          const createdMemory = response.data.memory;
+          return {
+            id: createdMemory.id,
+            title: createdMemory.title || '',
+            content: createdMemory.url || '',
+            type: 'link',
+            imageUrl: undefined,
+            createdAt: createdMemory.createdAt,
+          };
+        }
+        
+        throw new Error(response.data.message || 'Failed to create link memory');
       } else {
-        // For text and link types, use JSON
+        // For text type, use JSON
         const data = {
           title: memory.title || '',
           content: memory.content || '',

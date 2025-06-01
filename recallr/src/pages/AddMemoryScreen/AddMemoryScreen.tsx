@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, StyleSheet, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, StyleSheet, Image, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { memoryApi } from '../../services/api';
 import { useNavigation, CommonActions } from '@react-navigation/native';
+import SharingDebug from '../../components/SharingDebug';
 
 const AddMemoryScreen = () => {
   const [activeTab, setActiveTab] = useState<'Text' | 'Photo' | 'Link'>('Text');
@@ -130,7 +131,10 @@ const AddMemoryScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container}>
+      {/* Temporary Debug Component */}
+      <SharingDebug />
+      
       {/* Tabs */}
       <View style={styles.tabs}>
         {['Text', 'Photo', 'Link'].map(tab => (
@@ -171,7 +175,7 @@ const AddMemoryScreen = () => {
           <Text style={styles.saveButtonText}>Save Memory</Text>
         )}
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 };
 

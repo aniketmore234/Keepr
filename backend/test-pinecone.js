@@ -12,8 +12,8 @@ async function testPineconeConnection() {
     return;
   }
 
-  const indexName = process.env.PINECONE_INDEX_NAME || 'keepr-v1nybwf';
-  const indexHost = 'https://keepr-v1nybwf.svc.aped-4627-b74a.pinecone.io';
+  const indexName = process.env.PINECONE_INDEX_NAME;
+  const indexHost = process.env.PINECONE_INDEX_HOST;
   
   console.log(`Attempting to connect to Pinecone index: ${indexName}`);
   console.log(`Using direct host: ${indexHost}`);

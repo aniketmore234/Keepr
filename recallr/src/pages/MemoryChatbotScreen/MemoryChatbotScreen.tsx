@@ -14,8 +14,7 @@ import {
   Image,
   Dimensions,
   Linking,
-  AppState,
-  AppStateStatus,
+  Alert,
 } from 'react-native';
 import Voice, {
   SpeechResultsEvent,
@@ -69,6 +68,7 @@ type Message = {
     type: string;
     imagePath: string | null;
     description?: string;
+    url?: string;
   }>;
 };
 
@@ -89,217 +89,108 @@ const MemoryChatbotScreen = () => {
   const [isNearBottom, setIsNearBottom] = useState(true);
 
   const [isRecording, setIsRecording] = useState(false);
-  const [voiceInitialized, setVoiceInitialized] = useState(false);
-  const appState = useRef(AppState.currentState);
-  const isScreenActive = useRef(true);
-  const isMounted = useRef(true);
+  const hasInitializedVoice = useRef(false);
 
   const flatListRef = useRef<FlatList>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Voice event handlers
-  const voiceStart = (e: SpeechStartEvent) => {
-    console.log('[Voice] Started recording');
-    // Always update UI state and ensure screen is marked as active
-    isScreenActive.current = true;
-    if (isMounted.current) {
-      setIsRecording(true);
-    }
-  };
-
-  const voiceEnd = (e: SpeechEndEvent) => {
-    console.log('[Voice] Stopped recording');
-    if (isMounted.current) {
-      setIsRecording(false);
-    }
-  };
-
-  const voiceResults = (e: SpeechResultsEvent) => {
-    const spokenText = e.value?.[0] || '';
-    console.log('[Voice] Results:', spokenText);
-    console.log('[Voice] isScreenActive:', isScreenActive.current, 'isMounted:', isMounted.current);
-    
-    // Always set input text if we have spoken text and component is mounted
-    // Since voice recognition is working (search works), we should always show the text
-    if (spokenText && isMounted.current) {
-      console.log('[Voice] Setting input text to:', spokenText);
-      isScreenActive.current = true; // Ensure screen is marked as active
-      setInputText(spokenText);
-    }
-  };
-
-  const voiceError = (e: SpeechErrorEvent) => {
-    console.error('[Voice] Error:', e);
-    if (isMounted.current) {
-      setIsRecording(false);
-    }
-  };
-
   // Initialize voice recognition
-  const initializeVoice = () => {
-    console.log('[Voice] Initializing voice recognition...');
-    
-    // Remove existing listeners first
-    Voice.removeAllListeners();
-    
-    // Set up event listeners
-    Voice.onSpeechStart = voiceStart;
-    Voice.onSpeechEnd = voiceEnd;
-    Voice.onSpeechResults = voiceResults;
-    Voice.onSpeechError = voiceError;
-
-    // Check if voice is available
-    Voice.isAvailable()
-      .then(() => {
-        console.log('[Voice] Voice recognition is available');
-        if (isMounted.current) {
-          setVoiceInitialized(true);
-        }
-      })
-      .catch((error) => {
-        console.error('[Voice] Initialization error:', error);
-        if (isMounted.current) {
-          setVoiceInitialized(false);
-        }
-      });
-  };
-
-  // Clean up voice recognition
-  const cleanupVoice = () => {
-    console.log('[Voice] Cleaning up voice recognition...');
-    Voice.stop()
-      .then(() => Voice.destroy())
-      .then(() => {
-        Voice.removeAllListeners();
-        if (isMounted.current) {
-          setIsRecording(false);
-          setVoiceInitialized(false);
-        }
-      })
-      .catch((error) => {
-        console.error('[Voice] Cleanup error:', error);
-        if (isMounted.current) {
-          setIsRecording(false);
-          setVoiceInitialized(false);
-        }
-      });
-  };
-
-  // Handle app state changes
-  const handleAppStateChange = (nextAppState: AppStateStatus) => {
-    console.log('[Voice] App state changed from', appState.current, 'to', nextAppState);
-    
-    if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-      // App has come to the foreground
-      console.log('[Voice] App became active, reinitializing voice...');
-      isScreenActive.current = true;
-      setTimeout(() => {
-        if (isMounted.current) {
-          initializeVoice();
-        }
-      }, 500); // Small delay to ensure app is fully active
-    } else if (nextAppState.match(/inactive|background/)) {
-      // App is going to background
-      console.log('[Voice] App going to background, stopping recording...');
-      isScreenActive.current = false;
-      setIsRecording(false);
-      Voice.stop().catch(console.error);
-    }
-    
-    appState.current = nextAppState;
-  };
-
-  // Initialize voice recognition on component mount
   useEffect(() => {
-    console.log('[Voice] Component mounted, initializing...');
-    isMounted.current = true;
-    isScreenActive.current = true;
-    
-    initializeVoice();
+    if (hasInitializedVoice.current) return;
+    hasInitializedVoice.current = true;
 
-    // Add app state listener
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-
-    return () => {
-      console.log('[Voice] Component unmounting, cleaning up...');
-      isMounted.current = false;
-      subscription?.remove();
-      cleanupVoice();
+    const voiceStart = (e: SpeechStartEvent) => {
+      console.log('[Voice] Started recording');
+      setIsRecording(true);
     };
-  }, []);
 
-  // Add effect to handle screen focus - this ensures voice is ready when user interacts
-  useEffect(() => {
-    const resetVoiceOnFocus = () => {
-      console.log('[Voice] Screen focused, ensuring voice is ready...');
-      isScreenActive.current = true;
-      
-      // Force reinitialization if needed
-      if (!voiceInitialized) {
-        initializeVoice();
+    const voiceEnd = (e: SpeechEndEvent) => {
+      console.log('[Voice] Stopped recording');
+      setIsRecording(false);
+    };
+
+    const voiceResults = (e: SpeechResultsEvent) => {
+      const spokenText = e.value?.[0] || '';
+      console.log('[Voice] Results:', spokenText);
+      if (spokenText) {
+        setInputText(spokenText);
+        // Optionally auto-send the message
+        // handleSendMessage();
       }
     };
 
-    // Call immediately when component mounts/becomes visible
-    resetVoiceOnFocus();
-
-  }, []); // Run once on mount
-
-  const startRecording = () => {
-    console.log('[Voice] Attempting to start recording...');
-    console.log('[Voice] Current state - isScreenActive:', isScreenActive.current, 'voiceInitialized:', voiceInitialized, 'isMounted:', isMounted.current);
-    
-    // Always ensure screen is active
-    isScreenActive.current = true;
-    
-    const performStartRecording = () => {
-      // Stop any existing recording first
-      Voice.stop()
-        .then(() => {
-          // Start new recording
-          return Voice.start('en-US');
-        })
-        .then(() => {
-          console.log('[Voice] Recording started successfully');
-        })
-        .catch((error) => {
-          console.error('[Voice] Start error:', error);
-          if (isMounted.current) {
-            setIsRecording(false);
-          }
-          
-          // Try to reinitialize on error
-          console.log('[Voice] Attempting to reinitialize after error...');
-          cleanupVoice();
-          setTimeout(() => {
-            if (isMounted.current) {
-              initializeVoice();
-            }
-          }, 1000);
-        });
+    const voiceError = (e: SpeechErrorEvent) => {
+      console.error('[Voice] Error:', e);
+      setIsRecording(false);
     };
 
-    // Only reinitialize if voice is not initialized, otherwise try to start directly
-    if (!voiceInitialized) {
-      console.log('[Voice] Voice not initialized, initializing first...');
-      initializeVoice();
-      setTimeout(performStartRecording, 1000);
+    // Check if Voice module is available before setting up listeners
+    if (Voice && typeof Voice.onSpeechStart === 'function') {
+      Voice.onSpeechStart = voiceStart;
+      Voice.onSpeechEnd = voiceEnd;
+      Voice.onSpeechResults = voiceResults;
+      Voice.onSpeechError = voiceError;
+
+      // Initialize Voice with better error handling
+      if (typeof Voice.isAvailable === 'function') {
+        Voice.isAvailable().then(() => {
+          console.log('[Voice] Voice recognition is available');
+        }).catch(e => {
+          console.error('[Voice] Voice recognition not available:', e);
+        });
+      } else {
+        console.warn('[Voice] Voice.isAvailable is not a function');
+      }
     } else {
-      console.log('[Voice] Voice already initialized, starting recording directly...');
-      performStartRecording();
+      console.warn('[Voice] Voice module not properly initialized');
+    }
+
+    return () => {
+      if (Voice && typeof Voice.destroy === 'function') {
+        Voice.destroy().then(() => {
+          console.log('[Voice] Destroyed');
+        }).catch(e => {
+          console.error('[Voice] Error destroying:', e);
+        });
+      }
+      if (Voice && typeof Voice.removeAllListeners === 'function') {
+        Voice.removeAllListeners();
+      }
+    };
+  }, []);
+
+  const startRecording = async () => {
+    try {
+      if (!Voice || typeof Voice.start !== 'function') {
+        console.error('[Voice] Voice module not available for recording');
+        setIsRecording(false);
+        return;
+      }
+      
+      console.log('[Voice] Attempting to start recording...');
+      await Voice.start('en-US');
+      console.log('[Voice] Recording started successfully');
+    } catch (error) {
+      console.error('[Voice] Start error:', error);
+      setIsRecording(false);
     }
   };
 
-  const stopRecording = () => {
-    console.log('[Voice] Attempting to stop recording...');
-    Voice.stop()
-      .then(() => {
-        console.log('[Voice] Recording stopped successfully');
-      })
-      .catch((error) => {
-        console.error('[Voice] Stop error:', error);
+  const stopRecording = async () => {
+    try {
+      if (!Voice || typeof Voice.stop !== 'function') {
+        console.error('[Voice] Voice module not available for stopping');
         setIsRecording(false);
-      });
+        return;
+      }
+      
+      console.log('[Voice] Attempting to stop recording...');
+      await Voice.stop();
+      console.log('[Voice] Recording stopped successfully');
+    } catch (error) {
+      console.error('[Voice] Stop error:', error);
+      setIsRecording(false);
+    }
   };
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -399,6 +290,102 @@ const MemoryChatbotScreen = () => {
     setMessages(prev => [...prev, newMessage]);
   };
 
+  // Function to detect if a string is a URL
+  const isURL = (str: string): boolean => {
+    if (!str || typeof str !== 'string') return false;
+    
+    const trimmed = str.trim();
+    console.log(`[URL Debug] Checking if "${trimmed.substring(0, 50)}..." is a URL`);
+    
+    // Simple but effective URL detection
+    const urlPatterns = [
+      /^https?:\/\//i,                          // Starts with http:// or https://
+      /^www\./i,                                // Starts with www.
+      /\.(com|org|net|edu|gov|io|co\.uk|de|fr|jp|in|instagram\.com|youtube\.com)/i  // Contains common TLDs
+    ];
+    
+    const isValidURL = urlPatterns.some(pattern => pattern.test(trimmed));
+    console.log(`[URL Debug] Result: ${isValidURL}`);
+    
+    return isValidURL;
+  };
+
+  // Function to extract domain from URL for display
+  const getDomainFromURL = (url: string): string => {
+    try {
+      const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+      return urlObj.hostname.replace('www.', '');
+    } catch {
+      return url;
+    }
+  };
+
+  // Function to get platform-specific icon or styling for different social platforms
+  const getPlatformInfo = (url: string) => {
+    const domain = getDomainFromURL(url).toLowerCase();
+    
+    if (domain.includes('instagram')) {
+      return { platform: 'Instagram', color: '#E4405F' };
+    } else if (domain.includes('twitter') || domain.includes('x.com')) {
+      return { platform: 'Twitter', color: '#1DA1F2' };
+    } else if (domain.includes('youtube')) {
+      return { platform: 'YouTube', color: '#FF0000' };
+    } else if (domain.includes('linkedin')) {
+      return { platform: 'LinkedIn', color: '#0077B5' };
+    } else if (domain.includes('facebook')) {
+      return { platform: 'Facebook', color: '#4267B2' };
+    } else {
+      return { platform: getDomainFromURL(url), color: '#6750A4' };
+    }
+  };
+
+  // Function to render link card component
+  const renderLinkCard = (url: string, index: number | string) => {
+    const platformInfo = getPlatformInfo(url);
+    const displayUrl = url.startsWith('http') ? url : `https://${url}`;
+    
+    console.log(`[Link Card Debug] Rendering link card for URL: ${displayUrl}`);
+    
+    return (
+      <TouchableOpacity
+        key={index}
+        style={styles.linkCard}
+        onPress={() => {
+          console.log(`[Link Card Debug] TouchableOpacity pressed for URL: ${displayUrl}`);
+          try {
+            Linking.openURL(displayUrl)
+              .then(() => {
+                console.log(`[Link Card Debug] Successfully opened URL: ${displayUrl}`);
+              })
+              .catch((error) => {
+                console.error(`[Link Card Debug] Failed to open URL: ${displayUrl}`, error);
+                Alert.alert('Error', 'Could not open the link');
+              });
+          } catch (error) {
+            console.error(`[Link Card Debug] Error in onPress handler:`, error);
+          }
+        }}
+        activeOpacity={0.7}
+        accessible={true}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${platformInfo.platform} link`}
+      >
+        <View style={styles.linkCardContent}>
+          <View style={[styles.linkPlatformIndicator, { backgroundColor: platformInfo.color }]} />
+          <View style={styles.linkTextContainer}>
+            <Text style={styles.linkPlatformText} numberOfLines={1}>
+              {platformInfo.platform}
+            </Text>
+            <Text style={styles.linkUrlText} numberOfLines={2}>
+              {getDomainFromURL(url)}
+            </Text>
+          </View>
+          <Text style={styles.linkActionText}>→</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
     
@@ -415,7 +402,8 @@ const MemoryChatbotScreen = () => {
         content: memory.content || '',
         type: memory.type || 'text',
         imagePath: memory.imagePath,
-        description: memory.description || ''
+        description: memory.description || '',
+        url: memory.url,
       }));
 
       addMessage(
@@ -440,25 +428,80 @@ const MemoryChatbotScreen = () => {
     const screenWidth = Dimensions.get('window').width;
     const imageWidth = screenWidth * 0.7;
 
+    // Debug logging
+    console.log('[Source Debug] Sources received:', sources);
+    console.log('[Source Debug] Relevant memories:', relevantMemories);
+
     return (
       <View style={styles.sourcesContainer}>
-        {sources?.map((source, index) => (
-          <Text key={index} style={styles.sourceText}>
-            Source: {source}
-          </Text>
-        ))}
+        {sources?.map((source, index) => {
+          console.log(`[Source Debug] Processing source ${index}: "${source}"`);
+          const isSourceURL = isURL(source);
+          console.log(`[Source Debug] Is URL check result:`, isSourceURL);
+          
+          // Check if source is a URL
+          if (isSourceURL) {
+            console.log(`[Source Debug] Rendering link card for: ${source}`);
+            return (
+              <View key={`source-container-${index}`}>
+                {renderLinkCard(source, `source-${index}`)}
+              </View>
+            );
+          } else {
+            // Render as regular text source
+            return (
+              <Text key={`source-text-${index}`} style={styles.sourceText}>
+                Source: {source}
+              </Text>
+            );
+          }
+        })}
         {relevantMemories?.map((memory, index) => {
           console.log(`[Memory Debug] Processing memory ${index}:`, {
             title: memory.title,
             type: memory.type,
             hasImagePath: !!memory.imagePath,
-            imagePath: memory.imagePath
+            imagePath: memory.imagePath,
+            url: memory.url,
+            content: memory.content?.substring(0, 100) + '...',
+            description: memory.description?.substring(0, 100) + '...'
           });
           
           const imagePath = memory.type === 'image' && memory.imagePath ? 
             getImagePath(memory.imagePath) : null;
 
-          return (
+          // For link-type memories, prioritize the url field
+          let linkToOpen = null;
+          if (memory.type === 'link' && memory.url) {
+            linkToOpen = memory.url;
+            console.log(`[Memory Debug] Link-type memory, using url field: ${linkToOpen}`);
+          } else {
+            // For other types, check if content or description contains URLs
+            console.log(`[Memory Debug] Checking memory content for URLs:`);
+            console.log(`[Memory Debug] - Content: "${memory.content?.substring(0, 50)}..."`);
+            console.log(`[Memory Debug] - Description: "${memory.description?.substring(0, 50)}..."`);
+            console.log(`[Memory Debug] - Title: "${memory.title?.substring(0, 50)}..."`);
+            
+            const contentIsURL = memory.content && isURL(memory.content.trim());
+            const descriptionIsURL = memory.description && isURL(memory.description.trim());
+            const titleIsURL = memory.title && isURL(memory.title.trim());
+            
+            console.log(`[Memory Debug] URL check results:`, {
+              contentIsURL,
+              descriptionIsURL,
+              titleIsURL
+            });
+            
+            if (contentIsURL && memory.content) linkToOpen = memory.content.trim();
+            else if (descriptionIsURL && memory.description) linkToOpen = memory.description.trim();
+            else if (titleIsURL && memory.title) linkToOpen = memory.title.trim();
+          }
+          
+          const containsURL = !!linkToOpen;
+          console.log(`[Memory Debug] Final link to open: ${linkToOpen}`);
+          console.log(`[Memory Debug] Contains URL overall: ${containsURL}`);
+
+          const memoryCard = (
             <View key={index} style={styles.memorySource}>
               <Text style={styles.memoryTitle}>
                 {memory.title || 'Memory'} ({new Date(memory.createdAt).toLocaleDateString()})
@@ -486,46 +529,117 @@ const MemoryChatbotScreen = () => {
                 </View>
               )}
               {memory.content && !imagePath && (
-                <Text style={styles.memoryContent} numberOfLines={2}>
-                  {memory.content}
-                </Text>
+                <View>
+                  {/* For link-type memories, show a link card if there's a URL */}
+                  {memory.type === 'link' && memory.url ? (
+                    renderLinkCard(memory.url, `content-${index}`)
+                  ) : (
+                    /* For other types, check if content contains URLs */
+                    isURL(memory.content.trim()) ? (
+                      renderLinkCard(memory.content.trim(), `content-${index}`)
+                    ) : (
+                      <Text style={styles.memoryContent} numberOfLines={2}>
+                        {memory.content}
+                      </Text>
+                    )
+                  )}
+                </View>
               )}
               {memory.content && imagePath && (
-                <Text style={[styles.memoryContent, { marginTop: 4 }]} numberOfLines={2}>
-                  {memory.content}
-                </Text>
+                <View>
+                  {/* For link-type memories, show a link card if there's a URL */}
+                  {memory.type === 'link' && memory.url ? (
+                    <View style={{ marginTop: 4 }}>
+                      {renderLinkCard(memory.url, `content-${index}`)}
+                    </View>
+                  ) : (
+                    /* For other types, check if content contains URLs */
+                    isURL(memory.content.trim()) ? (
+                      <View style={{ marginTop: 4 }}>
+                        {renderLinkCard(memory.content.trim(), `content-${index}`)}
+                      </View>
+                    ) : (
+                      <Text style={[styles.memoryContent, { marginTop: 4 }]} numberOfLines={2}>
+                        {memory.content}
+                      </Text>
+                    )
+                  )}
+                </View>
+              )}
+              {/* Also check description field for URLs */}
+              {memory.description && memory.description !== memory.content && (
+                <View style={{ marginTop: 4 }}>
+                  {isURL(memory.description.trim()) ? (
+                    renderLinkCard(memory.description.trim(), `desc-${index}`)
+                  ) : (
+                    <Text style={styles.memoryContent} numberOfLines={2}>
+                      {memory.description}
+                    </Text>
+                  )}
+                </View>
               )}
             </View>
           );
+
+          // If the memory contains a URL, make the entire card clickable
+          if (containsURL) {
+            if (linkToOpen) {
+              return (
+                <TouchableOpacity 
+                  key={index} 
+                  onPress={() => {
+                    console.log('[Memory Debug] Opening URL from memory:', linkToOpen);
+                    Linking.openURL(linkToOpen.startsWith('http') ? linkToOpen : `https://${linkToOpen}`);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  {memoryCard}
+                </TouchableOpacity>
+              );
+            }
+          }
+
+          return memoryCard;
         })}
       </View>
     );
   };
 
-  const renderMessage = ({ item }: { item: Message }) => (
-    <View style={styles.messageContainer}>
-      <View
-        style={[
-          styles.messageBubble,
-          item.fromUser ? styles.userBubble : styles.botBubble,
-          item.error && styles.errorBubble,
-        ]}
-      >
-        <Text style={[
-          item.fromUser ? styles.userText : styles.botText,
-          item.error && styles.errorText,
-        ]}>
-          {item.text}
-        </Text>
-        {!item.fromUser && item.confidence && (
-          <Text style={styles.confidenceText}>
-            Confidence: {item.confidence}
+  const renderMessage = ({ item }: { item: Message }) => {
+    // Debug logging for the message structure
+    console.log('[Message Debug] Full message item:', {
+      id: item.id,
+      text: item.text?.substring(0, 100) + '...',
+      fromUser: item.fromUser,
+      sources: item.sources,
+      relevantMemories: item.relevantMemories?.length || 0
+    });
+
+    return (
+      <View style={styles.messageContainer}>
+        <View
+          style={[
+            styles.messageBubble,
+            item.fromUser ? styles.userBubble : styles.botBubble,
+            item.error && styles.errorBubble,
+          ]}
+        >
+          <Text style={[
+            item.fromUser ? styles.userText : styles.botText,
+            item.error && styles.errorText,
+          ]}>
+            {item.text}
           </Text>
-        )}
+          {!item.fromUser && item.confidence && (
+            <Text style={styles.confidenceText}>
+              Confidence: {item.confidence}
+            </Text>
+          )}
+        </View>
+        {!item.fromUser && renderSources(item.sources, item.relevantMemories)}
       </View>
-      {!item.fromUser && renderSources(item.sources, item.relevantMemories)}
-    </View>
-  );
+    );
+  };
 
   return (
     <KeyboardAvoidingView
@@ -757,6 +871,58 @@ const styles = StyleSheet.create({
   },
   voiceButtonActive: {
     backgroundColor: '#4CAF50',
+  },
+  linkCard: {
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    marginVertical: 4,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'visible',
+    zIndex: 1,
+  },
+  linkCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  linkPlatformIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginRight: 12,
+  },
+  linkTextContainer: {
+    flex: 1,
+    pointerEvents: 'none',
+  },
+  linkPlatformText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+    pointerEvents: 'none',
+  },
+  linkUrlText: {
+    fontSize: 12,
+    color: '#666',
+    pointerEvents: 'none',
+  },
+  linkActionText: {
+    fontSize: 16,
+    color: '#6750A4',
+    fontWeight: '600',
+    paddingLeft: 8,
+    pointerEvents: 'none',
   },
 });
 

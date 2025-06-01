@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
 
 // Temporarily allow self-signed certificates for Pinecone connection
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
@@ -59,7 +60,7 @@ async function initializePinecone() {
 
     console.log(`🔗 Connecting to index "${indexName}"...`);
     // Use direct host for the index based on our testing
-    const indexHost = 'https://keepr-v1nybwf.svc.aped-4627-b74a.pinecone.io';
+    const indexHost = process.env.PINECONE_INDEX_HOST;
     index = pinecone.index(indexName, indexHost);
     console.log('✅ Pinecone index connection established!');
 
@@ -199,6 +200,7 @@ async function generateEmbedding(text) {
   try {
     console.log('🤖 GOOGLE API: Attempting to generate embedding via Google API...');
     console.log(`📝 Input text: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
+    console.log(`📏 Text length: ${text.length} characters`);
     
     const result = await embeddingModel.embedContent(text);
     
@@ -210,7 +212,15 @@ async function generateEmbedding(text) {
     console.log(`   - Min value: ${Math.min(...result.embedding.values).toFixed(4)}`);
     console.log(`   - Max value: ${Math.max(...result.embedding.values).toFixed(4)}`);
     
-    return result.embedding.values;
+    // Normalize the embedding vector for better similarity calculations (like MemoryApp)
+    const embedding = result.embedding.values;
+    const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
+    const normalizedEmbedding = embedding.map(val => val / magnitude);
+    
+    console.log(`🔧 Vector normalized. Magnitude: ${magnitude.toFixed(4)}`);
+    console.log(`📊 Normalized sample: [${normalizedEmbedding.slice(0, 5).map(v => v.toFixed(4)).join(', ')}...]`);
+    
+    return normalizedEmbedding;
   } catch (error) {
     console.error('❌ GOOGLE API: Error generating embedding:', error.message);
     console.log('⚠️ FALLBACK: Using simple hash-based embedding instead');
@@ -292,6 +302,160 @@ async function extractImageMetadata(imagePath) {
   }
 }
 
+// Platform detection function
+function detectPlatform(url) {
+  try {
+    console.log(`🔍 Detecting platform for URL: ${url}`);
+    const urlLower = url.toLowerCase();
+    console.log(`🔍 URL lowercase: ${urlLower}`);
+    
+    if (urlLower.includes('instagram.com')) {
+      console.log('✅ Detected Instagram platform');
+      return 'instagram';
+    } else if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) {
+      console.log('✅ Detected YouTube platform');
+      return 'youtube';
+    } else if (urlLower.includes('twitter.com') || urlLower.includes('x.com')) {
+      console.log('✅ Detected Twitter/X platform');
+      return 'twitter';
+    } else if (urlLower.includes('tiktok.com')) {
+      console.log('✅ Detected TikTok platform');
+      return 'tiktok';
+    } else if (urlLower.includes('linkedin.com')) {
+      console.log('✅ Detected LinkedIn platform');
+      return 'linkedin';
+    } else {
+      console.log('ℹ️ No specific platform detected, using generic');
+      return 'generic';
+    }
+  } catch (error) {
+    console.error('❌ Error detecting platform:', error);
+    return 'generic';
+  }
+}
+
+// Instagram metadata extraction using Python script
+async function extractInstagramMetadata(url) {
+  return new Promise((resolve, reject) => {
+    console.log('📱 Processing Instagram URL with Python script...');
+    
+    const pythonScript = path.join(__dirname, 'instagram_processor.py');
+    
+    // Determine Python executable path - prefer virtual environment
+    let pythonExecutable = 'python';
+    const venvPythonWin = path.join(__dirname, 'venv', 'Scripts', 'python.exe');
+    const venvPythonUnix = path.join(__dirname, 'venv', 'bin', 'python');
+    
+    if (fs.existsSync(venvPythonWin)) {
+      pythonExecutable = venvPythonWin;
+      console.log('🐍 Using Python from Windows virtual environment');
+    } else if (fs.existsSync(venvPythonUnix)) {
+      pythonExecutable = venvPythonUnix;
+      console.log('🐍 Using Python from Unix virtual environment');
+    } else {
+      console.log('⚠️ Virtual environment not found, using system Python');
+      console.log('   Consider running setup_python_venv.bat (Windows) or setup_python_venv.sh (Linux/Mac)');
+    }
+    
+    const pythonProcess = spawn(pythonExecutable, [pythonScript, url]);
+    
+    let stdout = '';
+    let stderr = '';
+    
+    pythonProcess.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    pythonProcess.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    pythonProcess.on('close', (code) => {
+      if (code === 0) {
+        try {
+          const result = JSON.parse(stdout);
+          console.log('✅ Successfully extracted Instagram metadata');
+          
+          // Add timestamp information
+          const now = new Date();
+          result.created_at = now.toISOString();
+          result.date_readable = now.toLocaleDateString();
+          result.time_readable = now.toLocaleTimeString();
+          result.day_of_week = now.toLocaleDateString('en-US', { weekday: 'long' });
+          result.month_year = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+          result.timestamp_searchable = `${now.getFullYear()} ${now.toLocaleDateString('en-US', { month: 'long' })} ${now.toLocaleDateString('en-US', { weekday: 'long' })} ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+          
+          resolve(result);
+        } catch (parseError) {
+          console.error('❌ Error parsing Instagram metadata JSON:', parseError);
+          console.log('Raw stdout:', stdout);
+          reject(new Error('Failed to parse Instagram metadata'));
+        }
+      } else {
+        console.error('❌ Python script failed with code:', code);
+        console.error('❌ stderr:', stderr);
+        
+        // Return fallback data
+        const now = new Date();
+        const fallbackData = {
+          success: false,
+          platform: "instagram",
+          url: url,
+          title: "Instagram Content",
+          description: "Instagram content (metadata extraction failed)",
+          domain: "instagram.com",
+          type: "social",
+          category: "social_media",
+          tags: ["instagram"],
+          estimated_read_time: "1-2 minutes",
+          content_type: "instagram_content",
+          target_audience: "general",
+          relevance_score: 5.0,
+          created_at: now.toISOString(),
+          date_readable: now.toLocaleDateString(),
+          time_readable: now.toLocaleTimeString(),
+          day_of_week: now.toLocaleDateString('en-US', { weekday: 'long' }),
+          month_year: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+          timestamp_searchable: `${now.getFullYear()} ${now.toLocaleDateString('en-US', { month: 'long' })} ${now.toLocaleDateString('en-US', { weekday: 'long' })} ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`,
+          error: "Python script execution failed"
+        };
+        resolve(fallbackData);
+      }
+    });
+    
+    pythonProcess.on('error', (error) => {
+      console.error('❌ Error spawning Python process:', error);
+      console.log('💡 Suggestion: Run setup_python_venv.bat (Windows) or setup_python_venv.sh (Linux/Mac) to set up the virtual environment');
+      
+      // Return fallback data
+      const now = new Date();
+      const fallbackData = {
+        success: false,
+        platform: "instagram",
+        url: url,
+        title: "Instagram Content",
+        description: "Instagram content (Python unavailable)",
+        domain: "instagram.com",
+        type: "social",
+        category: "social_media", 
+        tags: ["instagram"],
+        estimated_read_time: "1-2 minutes",
+        content_type: "instagram_content",
+        target_audience: "general",
+        relevance_score: 5.0,
+        created_at: now.toISOString(),
+        date_readable: now.toLocaleDateString(),
+        time_readable: now.toLocaleTimeString(),
+        day_of_week: now.toLocaleDateString('en-US', { weekday: 'long' }),
+        month_year: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        timestamp_searchable: `${now.getFullYear()} ${now.toLocaleDateString('en-US', { month: 'long' })} ${now.toLocaleDateString('en-US', { weekday: 'long' })} ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`,
+        error: "Python not available"
+      };
+      resolve(fallbackData);
+    });
+  });
+}
+
 // Enhanced text analysis
 async function analyzeTextContent(content, title = '') {
   try {
@@ -356,10 +520,27 @@ async function analyzeTextContent(content, title = '') {
   }
 }
 
-// Enhanced URL analysis
+// Enhanced URL analysis with platform-specific processing
 async function analyzeUrlContent(url, title = '', description = '') {
   try {
-    console.log('🤖 GOOGLE API: Attempting URL analysis via Google Gemini...');
+    console.log(`🔍 Analyzing URL: ${url}`);
+    console.log(`📝 Title: "${title}"`);
+    console.log(`📝 Description: "${description}"`);
+    
+    // Detect platform
+    const platform = detectPlatform(url);
+    console.log(`📱 Detected platform: ${platform}`);
+    
+    // Use platform-specific processing
+    if (platform === 'instagram') {
+      console.log('🟢 Using Instagram-specific processing...');
+      const instagramResult = await extractInstagramMetadata(url);
+      console.log('📊 Instagram processing result:', JSON.stringify(instagramResult, null, 2));
+      return instagramResult;
+    }
+    
+    // For other platforms, use the existing Gemini analysis
+    console.log(`🤖 GOOGLE API: Using Gemini analysis for ${platform} platform...`);
     const now = new Date();
     const prompt = `Analyze this URL and any provided context to extract metadata in JSON format:
     URL: "${url}"
@@ -369,16 +550,16 @@ async function analyzeUrlContent(url, title = '', description = '') {
     
     Provide:
     {
-      "title": "improved title",
-      "description": "enhanced description", 
-      "domain": "domain name",
-      "type": "video/article/social/news/documentation etc",
-      "category": "technology/entertainment/news/education etc",
-      "platform": "youtube/twitter/github etc",
-      "tags": ["relevant", "tags"],
-      "estimated_read_time": "5 minutes",
-      "content_type": "tutorial/entertainment/news etc",
-      "target_audience": "general/technical/academic etc",
+      "title": "improved title (never empty)",
+      "description": "enhanced description (never empty)", 
+      "domain": "domain name (never empty)",
+      "type": "video/article/social/news/documentation etc (never empty)",
+      "category": "technology/entertainment/news/education etc (never empty)",
+      "platform": "youtube/twitter/github etc (never empty)",
+      "tags": ["relevant", "tags", "at least one"],
+      "estimated_read_time": "5 minutes (never null)",
+      "content_type": "tutorial/entertainment/news etc (never empty)",
+      "target_audience": "general/technical/academic etc (never empty)",
       "relevance_score": 8.5,
       "created_at": "${now.toISOString()}",
       "date_readable": "${now.toLocaleDateString()}",
@@ -386,7 +567,9 @@ async function analyzeUrlContent(url, title = '', description = '') {
       "day_of_week": "${now.toLocaleDateString('en-US', { weekday: 'long' })}",
       "month_year": "${now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}",
       "timestamp_searchable": "${now.getFullYear()} ${now.toLocaleDateString('en-US', { month: 'long' })} ${now.toLocaleDateString('en-US', { weekday: 'long' })} ${now.toLocaleDateString()} ${now.toLocaleTimeString()}"
-    }`;
+    }
+    
+    IMPORTANT: Never return null, undefined, or empty string values. Always provide meaningful content for each field.`;
     
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -396,21 +579,52 @@ async function analyzeUrlContent(url, title = '', description = '') {
     let responseText = response.text();
     responseText = cleanGeminiResponse(responseText);
     
-    const metadata = JSON.parse(responseText);
-    return metadata;
+    let metadata;
+    try {
+      metadata = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse Gemini response, using fallback');
+      throw new Error('Invalid JSON response from Gemini');
+    }
+    
+    // Validate and provide fallbacks for critical fields
+    const urlObj = new URL(url);
+    const cleanMetadata = {
+      title: metadata.title || title || `Content from ${urlObj.hostname}`,
+      description: metadata.description || description || `Link content from ${urlObj.hostname}`,
+      domain: metadata.domain || urlObj.hostname,
+      type: metadata.type || 'link',
+      category: metadata.category || 'general',
+      platform: metadata.platform || urlObj.hostname.replace('www.', ''),
+      tags: Array.isArray(metadata.tags) && metadata.tags.length > 0 ? metadata.tags : ['link'],
+      estimated_read_time: metadata.estimated_read_time || '5 minutes',
+      content_type: metadata.content_type || 'general',
+      target_audience: metadata.target_audience || 'general',
+      relevance_score: typeof metadata.relevance_score === 'number' ? metadata.relevance_score : 5.0,
+      created_at: metadata.created_at || now.toISOString(),
+      date_readable: metadata.date_readable || now.toLocaleDateString(),
+      time_readable: metadata.time_readable || now.toLocaleTimeString(),
+      day_of_week: metadata.day_of_week || now.toLocaleDateString('en-US', { weekday: 'long' }),
+      month_year: metadata.month_year || now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      timestamp_searchable: metadata.timestamp_searchable || `${now.getFullYear()} ${now.toLocaleDateString('en-US', { month: 'long' })} ${now.toLocaleDateString('en-US', { weekday: 'long' })} ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`
+    };
+    
+    return cleanMetadata;
   } catch (error) {
     console.error('❌ GOOGLE API: Error analyzing URL:', error.message);
     console.log('⚠️ FALLBACK: Using basic URL metadata instead');
     const now = new Date();
+    const urlObj = new URL(url);
+    
     return {
-      title: title || new URL(url).hostname,
-      description: description || 'Link content',
-      domain: new URL(url).hostname,
+      title: title || `Content from ${urlObj.hostname}`,
+      description: description || `Link content from ${urlObj.hostname}`,
+      domain: urlObj.hostname,
       type: 'link',
       category: 'general',
-      platform: new URL(url).hostname,
-      tags: [],
-      estimated_read_time: 'unknown',
+      platform: urlObj.hostname.replace('www.', ''),
+      tags: ['link'],
+      estimated_read_time: '5 minutes',
       content_type: 'general',
       target_audience: 'general',
       relevance_score: 5.0,
@@ -433,59 +647,96 @@ async function storeMemoryVector(memory) {
   }
 
   try {
-    // Build metadata object, only including fields with actual values
+    // Build metadata object, only including fields with actual values (not null, undefined, or empty strings)
     const metadata = {
       type: memory.type,
       title: memory.title || memory.metadata?.title || '',
       createdAt: memory.createdAt,
-      content: memory.combinedText,
+      // Store user-friendly content instead of combinedText for better AI understanding
+      content: memory.type === 'link' 
+        ? (memory.metadata?.ai_summary || memory.metadata?.description || memory.metadata?.caption || memory.url)
+        : (memory.type === 'image' 
+          ? (memory.metadata?.description || memory.metadata?.title || 'Image content')
+          : (memory.content || memory.metadata?.summary || 'Text content')),
+      // Keep combinedText for embedding search context but separate from content
+      searchableText: memory.combinedText,
       category: memory.metadata?.category || memory.metadata?.type || 'general',
       importance: memory.metadata?.importance_level || memory.metadata?.relevance_score || 5
     };
 
-    // Only add optional fields if they have valid values
-    if (memory.fileName) {
-      metadata.fileName = memory.fileName;
+    console.log(`🔍 DEBUG - Storing memory ${memory.id}:`);
+    console.log(`   Type: ${memory.type}`);
+    console.log(`   Title: ${metadata.title}`);
+    console.log(`   Content (for AI): ${metadata.content?.substring(0, 150)}${metadata.content?.length > 150 ? '...' : ''}`);
+    console.log(`   SearchableText (for embedding): ${metadata.searchableText?.substring(0, 100)}${metadata.searchableText?.length > 100 ? '...' : ''}`);
+    if (memory.metadata?.ai_summary) {
+      console.log(`   AI Summary: ${memory.metadata.ai_summary.substring(0, 100)}${memory.metadata.ai_summary.length > 100 ? '...' : ''}`);
     }
+
+    // Helper function to safely add metadata fields (excluding null, undefined, and empty values)
+    const addMetadataField = (fieldName, value) => {
+      if (value !== null && value !== undefined && value !== '' && value !== 'null' && value !== 'undefined') {
+        // Convert arrays to comma-separated strings for Pinecone
+        if (Array.isArray(value)) {
+          const cleanArray = value.filter(item => item !== null && item !== undefined && item !== '');
+          if (cleanArray.length > 0) {
+            metadata[fieldName] = cleanArray.join(', ');
+          }
+        } else {
+          metadata[fieldName] = value;
+        }
+      }
+    };
+
+    // Add optional fields only if they have valid values
+    addMetadataField('fileName', memory.fileName);
+    addMetadataField('url', memory.url);
+    addMetadataField('description', memory.description || memory.metadata?.description);
     
-    if (memory.url) {
-      metadata.url = memory.url;
-    }
-    
-    if (memory.description || memory.metadata?.description) {
-      metadata.description = memory.description || memory.metadata.description;
-    }
-
-    // Add other useful metadata for searching
-    if (memory.metadata?.objects) {
-      metadata.objects = Array.isArray(memory.metadata.objects) ? 
-        memory.metadata.objects.join(', ') : memory.metadata.objects;
-    }
-    
-    if (memory.metadata?.scene) {
-      metadata.scene = memory.metadata.scene;
-    }
-    
-    if (memory.metadata?.tags) {
-      metadata.tags = Array.isArray(memory.metadata.tags) ? 
-        memory.metadata.tags.join(', ') : memory.metadata.tags;
-    }
-
-    // Add URL-specific metadata (only if they exist and are not null)
-    if (memory.metadata?.platform) {
-      metadata.platform = memory.metadata.platform;
-    }
-
-    if (memory.metadata?.content_type) {
-      metadata.content_type = memory.metadata.content_type;
-    }
-
-    if (memory.metadata?.estimated_read_time && memory.metadata.estimated_read_time !== null) {
-      metadata.estimated_read_time = memory.metadata.estimated_read_time;
-    }
-
-    if (memory.metadata?.relevance_score && memory.metadata.relevance_score !== null) {
-      metadata.relevance_score = memory.metadata.relevance_score;
+    // Add metadata from analysis
+    if (memory.metadata) {
+      addMetadataField('objects', memory.metadata.objects);
+      addMetadataField('scene', memory.metadata.scene);
+      addMetadataField('tags', memory.metadata.tags);
+      addMetadataField('platform', memory.metadata.platform);
+      addMetadataField('content_type', memory.metadata.content_type);
+      addMetadataField('estimated_read_time', memory.metadata.estimated_read_time);
+      addMetadataField('target_audience', memory.metadata.target_audience);
+      addMetadataField('domain', memory.metadata.domain);
+      addMetadataField('mood', memory.metadata.mood);
+      addMetadataField('sentiment', memory.metadata.sentiment);
+      addMetadataField('urgency', memory.metadata.urgency);
+      addMetadataField('keywords', memory.metadata.keywords);
+      addMetadataField('topics', memory.metadata.topics);
+      addMetadataField('entities', memory.metadata.entities);
+      addMetadataField('action_items', memory.metadata.action_items);
+      addMetadataField('username', memory.metadata.username);
+      addMetadataField('hashtags', memory.metadata.hashtags);
+      addMetadataField('post_type', memory.metadata.post_type);
+      addMetadataField('caption', memory.metadata.caption);
+      addMetadataField('ai_summary', memory.metadata.ai_summary); // Add AI summary for link memories
+      
+      // Handle numeric fields with validation
+      if (typeof memory.metadata.relevance_score === 'number' && !isNaN(memory.metadata.relevance_score)) {
+        metadata.relevance_score = memory.metadata.relevance_score;
+      }
+      if (typeof memory.metadata.importance_level === 'number' && !isNaN(memory.metadata.importance_level)) {
+        metadata.importance_level = memory.metadata.importance_level;
+      }
+      if (typeof memory.metadata.quality_score === 'number' && !isNaN(memory.metadata.quality_score)) {
+        metadata.quality_score = memory.metadata.quality_score;
+      }
+      if (typeof memory.metadata.people_count === 'number' && !isNaN(memory.metadata.people_count)) {
+        metadata.people_count = memory.metadata.people_count;
+      }
+      
+      // Handle boolean fields
+      if (typeof memory.metadata.is_document === 'boolean') {
+        metadata.is_document = memory.metadata.is_document;
+      }
+      if (typeof memory.metadata.success === 'boolean') {
+        metadata.success = memory.metadata.success;
+      }
     }
 
     const vector = {
@@ -494,10 +745,13 @@ async function storeMemoryVector(memory) {
       metadata: metadata
     };
 
+    console.log(`📊 Storing vector with ${Object.keys(metadata).length} metadata fields:`, Object.keys(metadata));
+
     await index.upsert([vector]);
     console.log(`✅ Stored memory ${memory.id} in Pinecone`);
   } catch (error) {
     console.error('❌ Error storing in Pinecone:', error);
+    console.error('❌ Memory metadata that caused error:', JSON.stringify(memory.metadata, null, 2));
     // Fallback to in-memory
     memoryStore.push(memory);
   }
@@ -509,35 +763,81 @@ async function performRAGSearch(query, limit = 10) {
     // Generate embedding for query
     const queryEmbedding = await generateEmbedding(query);
     
+    // Define relevance threshold - now unified at 0.6 for all memory types
+    const BASE_RELEVANCE_THRESHOLD = 0.6; // For text and image memories
+    const LINK_RELEVANCE_THRESHOLD = 0.6;  // For link memories (now same as base)
     let searchResults = [];
 
     if (index) {
       // Search in Pinecone
       const searchResponse = await index.query({
         vector: queryEmbedding,
-        topK: limit,
-        includeMetadata: true
+        topK: limit * 2, // Search more candidates to allow for filtering
+        includeMetadata: true,
+        includeValues: false
       });
 
-      searchResults = searchResponse.matches.map(match => ({
-        id: match.id,
-        similarity: match.score,
-        type: match.metadata?.type,
-        title: match.metadata?.title,
-        content: match.metadata?.content,
-        category: match.metadata?.category,
-        importance: match.metadata?.importance,
-        createdAt: match.metadata?.createdAt
-      }));
+      console.log(`🔍 Search found ${searchResponse.matches.length} potential matches`);
+      
+      // Apply different thresholds based on memory type
+      searchResults = searchResponse.matches
+        .filter(match => {
+          const memoryType = match.metadata?.type;
+          const threshold = memoryType === 'link' ? LINK_RELEVANCE_THRESHOLD : BASE_RELEVANCE_THRESHOLD;
+          const isRelevant = match.score >= threshold;
+          
+          console.log(`📊 Search result ${match.id}: Type="${memoryType}", Score=${match.score.toFixed(3)}, Threshold=${threshold}, Relevant=${isRelevant}`);
+          console.log(`    Title: "${match.metadata?.title || 'No title'}"`);
+          console.log(`    Content: "${(match.metadata?.content || 'No content').substring(0, 100)}${(match.metadata?.content?.length || 0) > 100 ? '...' : ''}"`);
+          if (memoryType === 'link') {
+            console.log(`    URL: "${match.metadata?.url || 'No URL'}"`);
+            console.log(`    Platform: "${match.metadata?.platform || 'No platform'}"`);
+            console.log(`    AI Summary: "${(match.metadata?.ai_summary || 'No AI summary').substring(0, 80)}${(match.metadata?.ai_summary?.length || 0) > 80 ? '...' : ''}"`);
+            if (!isRelevant) {
+              console.log(`❌ Link memory filtered out from search: "${match.metadata?.title || 'Untitled'}" (${match.score.toFixed(3)} < ${threshold})`);
+            }
+          }
+          
+          return isRelevant;
+        })
+        .map(match => ({
+          id: match.id,
+          score: match.score,
+          type: match.metadata?.type,
+          title: match.metadata?.title,
+          content: match.metadata?.content,
+          url: match.metadata?.url,
+          description: match.metadata?.description,
+          createdAt: match.metadata?.createdAt,
+          objects: match.metadata?.objects,
+          scene: match.metadata?.scene,
+          tags: match.metadata?.tags,
+          category: match.metadata?.category,
+          platform: match.metadata?.platform,
+          imagePath: match.metadata?.type === 'image' ? match.metadata?.fileName : null,
+          // Include all relevant metadata for link memories
+          ai_summary: match.metadata?.ai_summary,
+          username: match.metadata?.username,
+          hashtags: match.metadata?.hashtags,
+          caption: match.metadata?.caption,
+          searchableText: match.metadata?.searchableText
+        }))
+        .slice(0, limit); // Take up to requested limit after filtering
     } else {
-      // Fallback to in-memory search
-      searchResults = memoryStore.map(memory => ({
-        ...memory,
-        similarity: cosineSimilarity(queryEmbedding, memory.embedding)
-      }))
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, limit);
+      // In-memory vector search with filtering
+      const allResults = searchMemoriesInMemory(query, queryEmbedding, limit * 2);
+      searchResults = allResults
+        .filter(memory => {
+          const threshold = memory.type === 'link' ? LINK_RELEVANCE_THRESHOLD : BASE_RELEVANCE_THRESHOLD;
+          return memory.score >= threshold;
+        })
+        .slice(0, limit);
     }
+
+    console.log(`📊 Final search results: ${searchResults.length} memories (after type-specific filtering)`);
+    searchResults.forEach((result, index) => {
+      console.log(`  ${index + 1}. ${result.type || 'unknown'} - "${result.title || 'Untitled'}" (Score: ${result.score?.toFixed(3)})`);
+    });
 
     // Use RAG to generate enhanced results with context
     if (searchResults.length > 0) {
@@ -653,16 +953,16 @@ async function analyzeContent(memoryData) {
 
 // Search memories in memory
 function searchMemoriesInMemory(query, queryEmbedding, limit = 10) {
-  if (memories.length === 0) return [];
+  if (memoryStore.length === 0) return [];
 
-  return memories
+  return memoryStore
     .map(memory => ({
       ...memory,
-      score: cosineSimilarity(queryEmbedding, memory.embeddings || [])
+      score: cosineSimilarity(queryEmbedding, memory.embedding || [])
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
-    .map(({ embeddings, ...memory }) => memory);
+    .map(({ embedding, ...memory }) => memory);
 }
 
 // Generate search insights
@@ -759,13 +1059,12 @@ app.post('/api/memory/image', upload.single('image'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file provided' });
     }
-    
-    // Extract important features from the image first
+
     const imagePath = req.file.path;
     const metadata = await extractImageMetadata(imagePath);
     
     // Generate comprehensive text for embedding
-    const combinedText = `${metadata.title} ${metadata.description} ${metadata.objects.join(' ')} ${metadata.activities.join(' ')} ${metadata.tags.join(' ')} ${metadata.text_content} ${metadata.scene} ${metadata.mood} ${metadata.colors.join(' ')} ${req.body.title}`;
+    const combinedText = `${metadata.title} ${metadata.description} ${metadata.objects.join(' ')} ${metadata.activities.join(' ')} ${metadata.tags.join(' ')} ${metadata.text_content} ${metadata.scene} ${metadata.mood} ${metadata.colors.join(' ')}`;
     const embedding = await generateEmbedding(combinedText);
 
     const memory = {
@@ -817,7 +1116,7 @@ app.post('/api/memory/text', async (req, res) => {
     }
 
     const metadata = await analyzeTextContent(content, title);
-    const combinedText = `${metadata.title} ${content} ${metadata.keywords.join(' ')} ${metadata.topics.join(' ')} ${metadata.entities.join(' ')} ${metadata.tags.join(' ')} ${metadata.category} ${title}`;
+    const combinedText = `${metadata.title} ${content} ${metadata.keywords.join(' ')} ${metadata.topics.join(' ')} ${metadata.entities.join(' ')} ${metadata.tags.join(' ')} ${metadata.category}`;
     const embedding = await generateEmbedding(combinedText);
 
     const memory = {
@@ -867,8 +1166,60 @@ app.post('/api/memory/link', async (req, res) => {
       return res.status(400).json({ error: 'No URL provided' });
     }
 
+    console.log('\n' + '='.repeat(80));
+    console.log('📝 PROCESSING LINK MEMORY FOR ENHANCED STORAGE');
+    console.log('='.repeat(80));
+    console.log(`🔗 URL: ${url}`);
+    console.log(`📝 Title: ${title || 'N/A'}`);
+    console.log(`📝 Description: ${description || 'N/A'}`);
+
+    // Extract metadata using existing function
     const metadata = await analyzeUrlContent(url, title, description);
-    const combinedText = `${metadata.title} ${metadata.description} ${url} ${metadata.tags.join(' ')} ${metadata.category} ${metadata.platform} ${metadata.content_type}`;
+    console.log('\n🔍 EXTRACTED METADATA:');
+    console.log('-'.repeat(40));
+    for (const [key, value] of Object.entries(metadata)) {
+      if (key !== 'ai_summary') {
+        console.log(`  ${key}: ${JSON.stringify(value)}`);
+      }
+    }
+
+    // Generate AI summary for link memories only
+    console.log('\n🤖 GENERATING AI SUMMARY FOR LINK MEMORY:');
+    console.log('-'.repeat(40));
+    const aiSummary = await generateLinkMemorySummary(metadata);
+    metadata.ai_summary = aiSummary;
+
+    // Create enhanced embedding text (like MemoryApp)
+    const title_text = metadata.title || '';
+    const description_text = metadata.description || '';
+    const caption_text = metadata.caption || '';
+    const ai_summary_text = metadata.ai_summary || '';
+    const username_text = metadata.username ? `@${metadata.username}` : '';
+    const platform_text = metadata.platform || '';
+    const type_text = metadata.type || '';
+    const hashtags_text = (metadata.hashtags && Array.isArray(metadata.hashtags)) 
+      ? metadata.hashtags.map(tag => `#${tag}`).join(' ') 
+      : '';
+
+    // Combine all text for embedding - structured like MemoryApp
+    const combinedText = `${title_text} ${description_text} ${caption_text} ${ai_summary_text} ${username_text} ${platform_text} ${type_text} ${hashtags_text}`.trim();
+
+    console.log('\n🔤 EMBEDDING TEXT CONSTRUCTION:');
+    console.log('-'.repeat(40));
+    console.log(`  Title: "${title_text}"`);
+    console.log(`  Description: "${description_text}"`);
+    console.log(`  Caption: "${caption_text}"`);
+    console.log(`  AI Summary: "${ai_summary_text}"`);
+    console.log(`  Username: "${username_text}"`);
+    console.log(`  Platform: "${platform_text}"`);
+    console.log(`  Type: "${type_text}"`);
+    console.log(`  Hashtags: "${hashtags_text}"`);
+    console.log(`\n🎯 FINAL EMBEDDING TEXT:`);
+    console.log(`  "${combinedText}"`);
+    console.log(`  Length: ${combinedText.length} characters`);
+
+    // Generate enhanced embedding
+    console.log('\n🔄 GENERATING NORMALIZED EMBEDDING...');
     const embedding = await generateEmbedding(combinedText);
 
     const memory = {
@@ -883,6 +1234,7 @@ app.post('/api/memory/link', async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
+    console.log('\n💾 STORING IN VECTOR DATABASE...');
     await storeMemoryVector(memory);
 
     // Clean the metadata response by filtering out null values
@@ -892,6 +1244,10 @@ app.post('/api/memory/link', async (req, res) => {
         cleanMetadata[key] = value;
       }
     }
+
+    console.log('\n' + '='.repeat(80));
+    console.log('🎉 LINK MEMORY PROCESSING COMPLETE');
+    console.log('='.repeat(80));
 
     res.json({
       success: true,
@@ -906,7 +1262,7 @@ app.post('/api/memory/link', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error processing link:', error);
+    console.error('❌ Error processing link:', error);
     res.status(500).json({ error: 'Failed to process link' });
   }
 });
@@ -925,36 +1281,93 @@ app.post('/api/search', async (req, res) => {
     // Generate embeddings for the search query
     const searchEmbedding = await generateEmbedding(query);
 
-    let results;
+    // Define relevance threshold - now unified at 0.6 for all memory types
+    const BASE_RELEVANCE_THRESHOLD = 0.6; // For text and image memories
+    const LINK_RELEVANCE_THRESHOLD = 0.6;  // For link memories (now same as base)
+    let searchResults;
     
     // Use Pinecone if available, otherwise use in-memory search
     if (index) {
       // Pinecone vector search
       const searchResponse = await index.query({
         vector: searchEmbedding,
-        topK: limit,
+        topK: limit * 2, // Search more candidates to allow for filtering
         includeMetadata: true,
         includeValues: false
       });
 
-      results = searchResponse.matches.map(match => ({
-        id: match.id,
-        score: match.score,
-        ...match.metadata
-      }));
+      console.log(`🔍 Search found ${searchResponse.matches.length} potential matches`);
+      
+      // Apply different thresholds based on memory type
+      searchResults = searchResponse.matches
+        .filter(match => {
+          const memoryType = match.metadata?.type;
+          const threshold = memoryType === 'link' ? LINK_RELEVANCE_THRESHOLD : BASE_RELEVANCE_THRESHOLD;
+          const isRelevant = match.score >= threshold;
+          
+          console.log(`📊 Search result ${match.id}: Type="${memoryType}", Score=${match.score.toFixed(3)}, Threshold=${threshold}, Relevant=${isRelevant}`);
+          console.log(`    Title: "${match.metadata?.title || 'No title'}"`);
+          console.log(`    Content: "${(match.metadata?.content || 'No content').substring(0, 100)}${(match.metadata?.content?.length || 0) > 100 ? '...' : ''}"`);
+          if (memoryType === 'link') {
+            console.log(`    URL: "${match.metadata?.url || 'No URL'}"`);
+            console.log(`    Platform: "${match.metadata?.platform || 'No platform'}"`);
+            console.log(`    AI Summary: "${(match.metadata?.ai_summary || 'No AI summary').substring(0, 80)}${(match.metadata?.ai_summary?.length || 0) > 80 ? '...' : ''}"`);
+            if (!isRelevant) {
+              console.log(`❌ Link memory filtered out from search: "${match.metadata?.title || 'Untitled'}" (${match.score.toFixed(3)} < ${threshold})`);
+            }
+          }
+          
+          return isRelevant;
+        })
+        .map(match => ({
+          id: match.id,
+          score: match.score,
+          type: match.metadata?.type,
+          title: match.metadata?.title,
+          content: match.metadata?.content,
+          url: match.metadata?.url,
+          description: match.metadata?.description,
+          createdAt: match.metadata?.createdAt,
+          objects: match.metadata?.objects,
+          scene: match.metadata?.scene,
+          tags: match.metadata?.tags,
+          category: match.metadata?.category,
+          platform: match.metadata?.platform,
+          imagePath: match.metadata?.type === 'image' ? match.metadata?.fileName : null,
+          // Include all relevant metadata for link memories
+          ai_summary: match.metadata?.ai_summary,
+          username: match.metadata?.username,
+          hashtags: match.metadata?.hashtags,
+          caption: match.metadata?.caption,
+          searchableText: match.metadata?.searchableText
+        }))
+        .slice(0, limit); // Take up to requested limit after filtering
     } else {
-      // In-memory vector search
-      results = searchMemoriesInMemory(query, searchEmbedding, limit);
+      // In-memory vector search with filtering
+      const allResults = searchMemoriesInMemory(query, searchEmbedding, limit * 2);
+      searchResults = allResults
+        .filter(memory => {
+          const threshold = memory.type === 'link' ? LINK_RELEVANCE_THRESHOLD : BASE_RELEVANCE_THRESHOLD;
+          return memory.score >= threshold;
+        })
+        .slice(0, limit);
     }
 
+    console.log(`📊 Final search results: ${searchResults.length} memories (after type-specific filtering)`);
+    searchResults.forEach((result, index) => {
+      console.log(`  ${index + 1}. ${result.type || 'unknown'} - "${result.title || 'Untitled'}" (Score: ${result.score?.toFixed(3)})`);
+    });
+
     // Generate AI insights about the search results
-    const aiInsights = await generateSearchInsights(query, results);
+    const aiInsights = await generateSearchInsights(query, searchResults);
 
     res.json({
       query,
-      results,
+      results: searchResults,
       aiInsights,
-      searchMethod: index ? 'pinecone' : 'in-memory'
+      searchMethod: index ? 'pinecone' : 'in-memory',
+      relevanceThreshold: BASE_RELEVANCE_THRESHOLD,
+      totalFiltered: searchResults.length
     });
 
   } catch (error) {
@@ -1123,7 +1536,7 @@ app.post('/api/memories', upload.single('image'), async (req, res) => {
       // Store in memory
       memoryData.embeddings = embeddings;
       memoryData.analysis = analysis;
-      memories.push(memoryData);
+      memoryStore.push(memoryData);
       console.log('✅ Memory stored in-memory');
     }
 
@@ -1207,31 +1620,58 @@ app.post('/api/chat/message', async (req, res) => {
     const searchEmbedding = await generateEmbedding(message);
     let relevantMemories = [];
     
+    // Define relevance threshold - now unified at 0.6 for all memory types
+    const BASE_RELEVANCE_THRESHOLD = 0.6; // For text and image memories
+    const LINK_RELEVANCE_THRESHOLD = 0.6;  // For link memories (now same as base)
+    
     if (index) {
       // Search in Pinecone
       const searchResponse = await index.query({
         vector: searchEmbedding,
-        topK: 3,
+        topK: 10, // Search more candidates to allow for filtering
         includeMetadata: true,
         includeValues: false
       });
 
-      relevantMemories = searchResponse.matches.map(match => ({
-        id: match.id,
-        score: match.score,
-        type: match.metadata?.type,
-        title: match.metadata?.title,
-        content: match.metadata?.content,
-        url: match.metadata?.url,
-        description: match.metadata?.description,
-        createdAt: match.metadata?.createdAt,
-        objects: match.metadata?.objects,
-        scene: match.metadata?.scene,
-        tags: match.metadata?.tags,
-        category: match.metadata?.category,
-        platform: match.metadata?.platform,
-        imagePath: match.metadata?.type === 'image' ? match.metadata?.fileName : null
-      }));
+      console.log(`🔍 Found ${searchResponse.matches.length} potential matches`);
+      
+      // Apply different thresholds based on memory type
+      relevantMemories = searchResponse.matches
+        .filter(match => {
+          const memoryType = match.metadata?.type;
+          const threshold = memoryType === 'link' ? LINK_RELEVANCE_THRESHOLD : BASE_RELEVANCE_THRESHOLD;
+          const isRelevant = match.score >= threshold;
+          
+          console.log(`📊 Memory ${match.id}: Type="${memoryType}", Score=${match.score.toFixed(3)}, Threshold=${threshold}, Relevant=${isRelevant}`);
+          if (memoryType === 'link' && !isRelevant) {
+            console.log(`❌ Link memory filtered out from search: "${match.metadata?.title || 'Untitled'}" (${match.score.toFixed(3)} < ${threshold})`);
+          }
+          
+          return isRelevant;
+        })
+        .map(match => ({
+          id: match.id,
+          score: match.score,
+          type: match.metadata?.type,
+          title: match.metadata?.title,
+          content: match.metadata?.content,
+          url: match.metadata?.url,
+          description: match.metadata?.description,
+          createdAt: match.metadata?.createdAt,
+          objects: match.metadata?.objects,
+          scene: match.metadata?.scene,
+          tags: match.metadata?.tags,
+          category: match.metadata?.category,
+          platform: match.metadata?.platform,
+          imagePath: match.metadata?.type === 'image' ? match.metadata?.fileName : null,
+          // Include all relevant metadata for link memories
+          ai_summary: match.metadata?.ai_summary,
+          username: match.metadata?.username,
+          hashtags: match.metadata?.hashtags,
+          caption: match.metadata?.caption,
+          searchableText: match.metadata?.searchableText
+        }))
+        .slice(0, 1); // Take only the most relevant memory
 
       // Filter to only include the most relevant image memory (if any)
       const imageMemories = relevantMemories.filter(memory => memory.type === 'image' && memory.imagePath);
@@ -1240,11 +1680,25 @@ app.post('/api/chat/message', async (req, res) => {
       // Replace image memories in relevantMemories with only the top one
       relevantMemories = relevantMemories.filter(memory => memory.type !== 'image').concat(topImageMemory);
     } else {
-      // Fallback to in-memory search
-      relevantMemories = searchMemoriesInMemory(message, searchEmbedding, 5);
+      // Fallback to in-memory search with filtering
+      const allResults = searchMemoriesInMemory(message, searchEmbedding, 10);
+      relevantMemories = allResults
+        .filter(memory => {
+          const threshold = memory.type === 'link' ? LINK_RELEVANCE_THRESHOLD : BASE_RELEVANCE_THRESHOLD;
+          return memory.score >= threshold;
+        })
+        .slice(0, 1); // Take only the most relevant memory
     }
 
-    console.log(`📊 Found ${relevantMemories.length} relevant memories`);
+    console.log(`📊 Final relevant memories: ${relevantMemories.length} (after type-specific filtering)`);
+    relevantMemories.forEach((memory, index) => {
+      console.log(`  ${index + 1}. ${memory.type} - "${memory.title}" (Score: ${memory.score?.toFixed(3)})`);
+      if (memory.type === 'link') {
+        console.log(`      URL: ${memory.url || 'No URL'}`);
+        console.log(`      Platform: ${memory.platform || 'No platform'}`);
+        console.log(`      Content: ${(memory.content || 'No content').substring(0, 80)}${(memory.content?.length || 0) > 80 ? '...' : ''}`);
+      }
+    });
 
     // Step 2: Build conversation context
     const recentMessages = conversation.messages.slice(-MAX_CONTEXT_MESSAGES);
@@ -1273,31 +1727,36 @@ app.post('/api/chat/message', async (req, res) => {
         return context;
       }).join('\n---\n');
 
-      const prompt = `You are an AI assistant having a conversation with a user about their personal memories. 
+      console.log(`🤖 DEBUG - Memory context being sent to AI:`);
+      console.log(`📝 Memory Context:\n${memoryContext}`);
+      console.log(`💬 Conversation Context: ${conversationContext.substring(0, 200)}${conversationContext.length > 200 ? '...' : ''}`);
+      console.log(`❓ User Message: "${message}"`);
 
-CONVERSATION HISTORY:
+      const prompt = `You are a friendly, helpful AI assistant chatting with someone about their personal memories. Think of yourself as a close friend who genuinely cares and remembers things they've shared.
+
+CONVERSATION SO FAR:
 ${conversationContext}
 
-CURRENT USER MESSAGE: "${message}"
+THEIR CURRENT MESSAGE: "${message}"
 
-RELEVANT MEMORIES FOUND:
+WHAT I FOUND IN THEIR MEMORIES:
 ${memoryContext}
 
-Instructions:
-1. Respond conversationally, acknowledging the conversation flow
-2. Reference previous messages if relevant
-3. Use the memories to provide helpful, specific answers
-4. If this is a follow-up question, build on previous responses
-5. Be natural and engaging, like a helpful assistant who remembers what you've talked about
-6. Include specific details from memories (dates, times, locations, etc.)
-7. If no relevant memories are found, acknowledge that and offer to help differently
-8. Structure your answer clearly using paragraphs or bullet points if needed.
+Instructions for responding:
+- Be warm, friendly, and conversational (like texting a good friend)
+- Use casual language and show genuine interest
+- Reference specific details from their memory if you found something relevant
+- If you found exactly what they're looking for, get excited about it!
+- If you didn't find what they wanted, be apologetic and offer to help differently
+- Keep it natural - no robotic language or formal tone
+- Use "I" statements and make it personal
+- Add some personality and warmth to your response
 
-Format your response as JSON:
+Respond in JSON format:
 {
-  "answer": "Your conversational response here",
+  "answer": "Your friendly, conversational response here",
   "confidence": "high/medium/low",
-  "sources_used": ["description of which memories or context were most helpful"],
+  "sources_used": ["brief description of memories you referenced"],
   "is_followup": ${recentMessages.length > 1 ? 'true' : 'false'}
 }`;
 
@@ -1339,7 +1798,7 @@ Format your response as JSON:
       relevantMemories: relevantMemories.map(memory => ({
         ...memory,
         imagePath: memory.type === 'image' ? memory.imagePath : null
-      })).slice(0, 3), // Return top 3 for reference
+      })).slice(0, 1), // Return only the most relevant memory
       timestamp: new Date().toISOString()
     };
     conversation.messages.push(aiMessage);
@@ -1411,8 +1870,72 @@ app.get('/api/conversations', (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// Generate AI summary for link memories (based on MemoryApp approach)
+async function generateLinkMemorySummary(metadata) {
+  try {
+    console.log('🤖 Generating AI summary for link memory...');
+    
+    const hashtags = metadata.hashtags || [];
+    const hashtagsText = hashtags.length > 0 ? hashtags.map(tag => `#${tag}`).join(' ') : '';
+    
+    const summaryPrompt = `I have extracted the following metadata from a ${metadata.platform} ${metadata.type || 'post'}. Please create a concise, searchable summary based on this information:
+
+Username: @${metadata.username || 'unknown'}
+Post Type: ${metadata.type || 'unknown'}
+Title: ${metadata.title || 'N/A'}
+Caption: ${metadata.caption || metadata.description || 'No caption available'}
+Hashtags: ${hashtagsText || 'No hashtags'}
+Platform: ${metadata.platform || 'unknown'}
+
+Based on this extracted information, create a brief summary (2-3 sentences) that:
+1. Describes what this content appears to be about based on the caption and hashtags
+2. Highlights key topics, themes, locations, or interesting details mentioned
+3. Uses keywords that would help someone find this content later when searching
+4. Mentions the platform and username for context
+
+Focus on making it highly searchable - think about what terms someone would use when trying to remember this content.
+Do not try to access any URLs. Only use the provided metadata above.`;
+
+    console.log('🔄 Sending summary prompt to Gemini...');
+    const summaryResponse = await model.generateContent(summaryPrompt);
+    const aiSummary = summaryResponse.response.text().trim();
+    
+    console.log('✅ Generated AI summary:');
+    console.log(`   ${aiSummary}`);
+    
+    return aiSummary;
+  } catch (error) {
+    console.error('❌ Error generating AI summary:', error);
+    
+    // Fallback summary based on available data
+    const caption = metadata.caption || metadata.description || '';
+    const username = metadata.username || 'unknown';
+    const postType = metadata.type || 'post';
+    const hashtags = metadata.hashtags || [];
+    const platform = metadata.platform || 'social media';
+    
+    const fallbackParts = [`${platform} ${postType} by @${username}`];
+    
+    if (caption && caption.length > 10) {
+      fallbackParts.push(`Caption: ${caption.substring(0, 150)}...`);
+    }
+    
+    if (hashtags.length > 0) {
+      fallbackParts.push(`Tags: ${hashtags.slice(0, 5).map(tag => `#${tag}`).join(', ')}`);
+    }
+    
+    const fallbackSummary = fallbackParts.join('. ');
+    console.log('⚠️ Using fallback AI summary:');
+    console.log(`   ${fallbackSummary}`);
+    
+    return fallbackSummary;
+  }
+}
+
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Memory App Backend with Vector Database running on port ${PORT}`);
   console.log(`📊 Vector DB: ${index ? 'Pinecone' : 'In-memory fallback'}`);
   console.log(`🔑 Make sure to set GOOGLE_API_KEY and PINECONE_API_KEY in your .env file`);
+  console.log(`🌍 Server accessible at: http://0.0.0.0:${PORT} (all interfaces)`);
+  console.log(`📱 Android emulator can connect via: http://10.0.2.2:${PORT}`);
 }); 

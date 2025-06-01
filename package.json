@@ -4,9 +4,9 @@
   "description": "MVP Memory App with Vector Search and AI Analysis",
   "scripts": {
     "backend": "cd backend && npm start",
-    "frontend": "cd frontend && npx react-native start",
-    "android": "cd frontend && npx react-native run-android",
-    "ios": "cd frontend && npx react-native run-ios",
+    "frontend": "cd recallr && npx react-native start",
+    "android": "cd recallr && npx react-native run-android",
+    "ios": "cd recallr && npx react-native run-ios",
     "setup": "./setup.sh",
     "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
     "start": "npm run backend"
@@ -20,16 +20,13 @@
   "author": "Memory App Team",
   "license": "MIT",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "@react-native-community/cli": "latest"
   },
   "dependencies": {
     "@react-native-voice/voice": "^3.2.4",
-    "@react-navigation/native": "^7.1.10",
-    "@react-navigation/native-stack": "^7.3.14",
     "@types/react": "^19.1.6",
     "@types/react-native": "^0.72.8",
-    "react-native-paper": "^5.14.5",
-    "react-native-safe-area-context": "^5.4.1",
-    "react-native-screens": "^4.11.1"
+    "react-native-paper": "^5.14.5"
   }
 }
