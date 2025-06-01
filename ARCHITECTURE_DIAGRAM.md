@@ -9,40 +9,89 @@ Keepr is a multi-platform AI-powered memory management application with vector d
 graph TB
     %% Client Layer
     subgraph "CLIENT LAYER"
-        RN[React Native App<br/>Main Application<br/>• HomeScreen<br/>• AddMemory<br/>• SearchScreen<br/>• MemoryDetail]
-        WA[Web App<br/>webapp/<br/>• HTML/CSS/JS<br/>• Memory Forms<br/>• Search UI<br/>• Chat Interface]
-        RA[Mobile App<br/>recallr/<br/>• AddMemoryScreen<br/>• Chatbot Screen<br/>• Navigation<br/>• Header/Footer]
+        RN["React Native App (Main)
+        • HomeScreen
+        • AddMemory
+        • SearchScreen
+        • MemoryDetail"]
+        WA["Web App (webapp/)
+        • HTML/CSS/JS
+        • Memory Forms
+        • Search UI
+        • Chat Interface"]
+        RA["Mobile App (recallr/)
+        • AddMemoryScreen
+        • Chatbot Screen
+        • Navigation
+        • Header/Footer"]
     end
     
     %% Service Layer
     subgraph "SERVICE LAYER"
-        SDK[Keepr SDK<br/>sdk/<br/>• KeeprSDK Class<br/>• Memory Types<br/>• Voice Support<br/>• Validation]
-        API[API Service<br/>src/services/<br/>• ApiService.js<br/>• HTTP Client<br/>• Error Handling<br/>• Request/Response]
+        SDK["Keepr SDK (sdk/)
+        • KeeprSDK Class
+        • Memory Types
+        • Voice Support
+        • Validation"]
+        API["API Service (src/services/)
+        • ApiService.js
+        • HTTP Client
+        • Error Handling
+        • Request/Response"]
     end
     
     %% Backend Layer
     subgraph "BACKEND LAYER"
-        subgraph "Express Server (backend/server.js)"
-            EP[API Endpoints<br/>• POST /api/memory/image<br/>• POST /api/memory/text<br/>• POST /api/memory/link<br/>• POST /api/search<br/>• GET /api/memories<br/>• POST /api/chat]
-            CS[Core Services<br/>• Image Analysis<br/>• Text Processing<br/>• URL Content Extraction<br/>• Vector Search & RAG<br/>• Memory Management<br/>• Chatbot Conversations]
-            MW[Middleware<br/>• CORS<br/>• JSON Parser<br/>• File Static Serving]
-            ST[Storage<br/>• File Upload (Multer)<br/>• Conversations.json<br/>• In-Memory Fallback]
+        subgraph "Express Server"
+            EP["API Endpoints
+            • POST /api/memory/image
+            • POST /api/memory/text
+            • POST /api/memory/link
+            • POST /api/search
+            • GET /api/memories
+            • POST /api/chat"]
+            CS["Core Services
+            • Image Analysis
+            • Text Processing
+            • URL Content Extraction
+            • Vector Search & RAG
+            • Memory Management
+            • Chatbot Conversations"]
+            MW["Middleware
+            • CORS
+            • JSON Parser
+            • File Static Serving"]
+            ST["Storage
+            • File Upload (Multer)
+            • Conversations.json
+            • In-Memory Fallback"]
         end
     end
     
     %% AI & Database Layer
     subgraph "AI & DATABASE LAYER"
         subgraph "Google AI Services"
-            GM[Gemini 1.5 Flash Model<br/>• Image Analysis<br/>• Text Generation<br/>• RAG Processing]
-            EMB[embedding-001<br/>• 768-dim Embeddings<br/>• Semantic Understanding]
+            GM["Gemini 1.5 Flash Model
+            • Image Analysis
+            • Text Generation
+            • RAG Processing"]
+            EMB["embedding-001
+            • 768-dim Embeddings
+            • Semantic Understanding"]
         end
         
         subgraph "Pinecone Vector DB"
-            PC[Vector Storage<br/>• Similarity Search<br/>• Production Scale<br/>• 768-dim Embeddings]
+            PC["Vector Storage
+            • Similarity Search
+            • Production Scale
+            • 768-dim Embeddings"]
         end
         
         subgraph "Fallback Storage"
-            MEM[In-Memory Arrays<br/>• memoryStore[]<br/>• conversations{}<br/>• Simple embeddings]
+            MEM["In-Memory Arrays
+            • memoryStore[]
+            • conversations{}
+            • Simple embeddings"]
         end
     end
     
