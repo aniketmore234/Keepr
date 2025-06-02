@@ -3,6 +3,11 @@ runtime: nodejs18
 env_variables:
   NODE_ENV: production
   PORT: 8080
+  # Add your API keys here:
+  GOOGLE_API_KEY: "your-gemini-api-key-here"
+  PINECONE_API_KEY: "your-pinecone-api-key-here"
+  PINECONE_INDEX_NAME: "your-pinecone-index-name"
+  PINECONE_ENVIRONMENT: "your-pinecone-environment"
 
 # Configure scaling
 automatic_scaling:

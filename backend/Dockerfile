@@ -1,13 +1,24 @@
-# Use the official Node.js runtime as a parent image
+# Use the official Node.js runtime with Python support
 FROM node:18-alpine
+
+# Install Python and pip
+RUN apk add --no-cache python3 py3-pip
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
+# Create and activate virtual environment for Python packages
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy Python requirements and install Python dependencies
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
 # Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Install dependencies
+# Install Node.js dependencies
 RUN npm ci --only=production
 
 # Copy the rest of the application code

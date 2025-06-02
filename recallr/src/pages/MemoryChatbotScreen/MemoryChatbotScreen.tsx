@@ -24,6 +24,7 @@ import Voice, {
 } from '@react-native-voice/voice';
 import { SvgXml } from 'react-native-svg';
 import { chatbotApi } from '../../services/api';
+import { config } from '../../config/environment';
 
 const micIconXml = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -31,12 +32,8 @@ const micIconXml = `<?xml version="1.0" encoding="UTF-8"?>
   <path d="M17 11C17 13.76 14.76 16 12 16C9.24 16 7 13.76 7 11H5C5 14.53 7.61 17.43 11 17.92V21H13V17.92C16.39 17.43 19 14.53 19 11H17Z" fill="currentColor"/>
 </svg>`;
 
-// Base path for uploaded images
-const UPLOADS_BASE_PATH = Platform.select({
-  ios: 'http://localhost:3000/uploads',
-  android: 'http://10.0.2.2:3000/uploads',
-  default: 'http://localhost:3000/uploads',
-});
+// Use centralized configuration for uploads base path
+const UPLOADS_BASE_PATH = config.UPLOADS_BASE_PATH;
 
 const getImagePath = (fileName: string) => {
   if (!fileName) {

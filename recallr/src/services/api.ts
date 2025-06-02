@@ -1,14 +1,10 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { config } from '../config/environment';
 
-// For iOS simulator, use localhost
-// For Android emulator, use 10.0.2.2
-const BASE_URL = Platform.select({
-  ios: 'http://localhost:3000',
-  android: 'http://10.0.2.2:3000',
-  default: 'http://localhost:3000',
-});
+// TEMPORARY FIX: Hardcode production URL to bypass caching issues
+const BASE_URL = 'https://recallr-backend-884973183549.us-central1.run.app';
 
 const api = axios.create({
   baseURL: BASE_URL,

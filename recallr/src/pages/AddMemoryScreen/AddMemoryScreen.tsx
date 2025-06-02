@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, TextInput, StyleSheet, Image, Alert, Acti
 import { launchImageLibrary } from 'react-native-image-picker';
 import { memoryApi } from '../../services/api';
 import { useNavigation, CommonActions } from '@react-navigation/native';
-import SharingDebug from '../../components/SharingDebug';
 
 const AddMemoryScreen = () => {
   const [activeTab, setActiveTab] = useState<'Text' | 'Photo' | 'Link'>('Text');
@@ -132,9 +131,6 @@ const AddMemoryScreen = () => {
 
   return (
     <ScrollView style={styles.container}>
-      {/* Temporary Debug Component */}
-      <SharingDebug />
-      
       {/* Tabs */}
       <View style={styles.tabs}>
         {['Text', 'Photo', 'Link'].map(tab => (
